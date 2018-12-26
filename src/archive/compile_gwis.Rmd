@@ -1,0 +1,15 @@
+---
+title: MRS Model Experimentation
+output:
+  pdf_document:
+  latex_engine: pdflatex
+---
+  
+  ```{r prereqs, include=F, cache=F}
+library(knitr)
+opts_chunk$set(echo=F, cache.lazy=F, cache.path="../cache/mrs_models/",
+               fig.keep="high", fig.path="../output/figures/")
+suppressMessages(silent <- lapply(c("tidyverse","survival","glmnet","minfi","caret","doParallel",
+                                    "itertools","randomForest","pROC"), library, character.only=T))
+options(digits=3)
+```

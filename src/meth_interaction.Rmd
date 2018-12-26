@@ -1,0 +1,233 @@
+---
+output:
+  bookdown::pdf_document2:
+    fig_caption: true
+    toc: false
+---
+
+```{r prereqs, include=F}
+library(knitr)
+knitr::opts_chunk$set(echo=F, 
+                      cache.path="../cache//", fig.pos="h")
+options(kableExtra.latex.load_packages = FALSE)
+suppressMessages(silent <- lapply(
+  c("tidyverse", "parallel", "doParallel", "itertools",
+    "gridExtra", "cowplot",
+    "IlluminaHumanMethylation450kanno.ilmn12.hg19"), 
+  library, character.only=T))
+```
+
+```{r load-data}
+# Load methylation data
+betas_whi <- readRDS("../../meth_cvd/int/betas.qc.norm.filt_whi.rds")
+betas_fhs <- readRDS("../../meth_cvd/int/betas.qc.norm.filt_fhs.rds")
+
+# Load metadata
+metadata_whi <- read_table("../int/sfa/whi_phenos.txt")
+metadata_fhs <- read_table("../int/sfa/fhs_phenos.txt")
+metadata <- bind_rows(whi=metadata_whi, fhs=metadata_fhs, .id="study")
+
+# Load estimated cell counts
+est_cell_counts_whi <- readRDS("../../meth_cvd/int/est_cell_counts_whi.rds")
+est_cell_counts_fhs <- readRDS("../../meth_cvd/int/est_cell_counts_fhs.rds")
+
+# Load CPACOR principal component adjustment factors
+load("../../meth_cvd/int/CPACOR_whi.RData")
+CP_PCs_whi <- CP_PCs
+load("../../meth_cvd/int/CPACOR_fhs.RData")
+CP_PCs_fhs <- CP_PCs
+
+# Load PCA results
+load("../../meth_cvd/int/PCA.fit_whi.RData")
+PCs_whi <- PCs
+load("../../meth_cvd/int/PCA.fit_fhs.RData")
+PCs_fhs <- PCs
+
+# Generate Illumina 450k annotation data frame
+anno_450k <- data.frame(getAnnotation(
+  IlluminaHumanMethylation450kanno.ilmn12.hg19), stringsAsFactors=F)
+```
+
+```{r clean-data, warning=F}
+est_cell_counts <- bind_rows(est_cell_counts_whi, est_cell_counts_fhs)
+CP_PCs <- bind_rows(CP_PCs_whi, CP_PCs_fhs)
+PCs <- bind_rows(PCs_whi, PCs_fhs)
+
+# Create master covariate/event data frame
+non_meth_data <- Reduce(function(x,y) inner_join(x, y, by="sampleKey"),
+                        list(metadata, est_cell_counts, CP_PCs, PCs)) %>%
+  distinct(subjID, .keep_all=T)  # Removal of biological replicates
+# non_meth_data <- replace_na(non_meth_data, 
+#                             list(bmi=median(non_meth_data$bmi, na.rm=T),
+#                                  smk_now=0, smk_py=0, 
+#                                  ht_med=0, lipid_med=0, dm_med=0)) %>%
+#   mutate(diabetes=(dm_med | glu > 125)) %>%
+#   mutate_at(c("chol", "ldl", "hdl", "tg", "sbp", "glu", "hscrp"), log10)
+
+nmd_whi <- filter(non_meth_data, study == "whi")
+nmd_fhs <- filter(non_meth_data, study == "fhs")
+
+betas_whi <- betas_whi[, match(nmd_whi$sampleKey, colnames(betas_whi))]
+betas_fhs <- betas_fhs[, match(nmd_fhs$sampleKey, colnames(betas_fhs))]
+stopifnot(all(colnames(betas_whi) == nmd_whi$sampleKey),
+          all(colnames(betas_fhs) == nmd_fhs$sampleKey))
+```
+
+```{r qc, warning=F, eval=F}
+make_variation_plot <- function(cohort) {
+  nmd <- filter(non_meth_data, study == cohort)
+  
+  wbcpca.fit <- prcomp(select(nmd, CD8T, CD4T, NK, Bcell, Mono, Gran), scale.=T)
+  nmd$WBC_PC1 <- wbcpca.fit$x[, "PC1"]
+  nmd$WBC_PC2 <- wbcpca.fit$x[, "PC2"]
+  
+  covs <- c("sex", "age", "race", "bmi", "smk_now", "smk_py", "WBC_PC1", 
+            "WBC_PC2", "plate", "center", "dnaPull", "sentrixRow", "sentrixCol", 
+            "event", "pastEvent")
+  comparison_df <- expand.grid(pc=c(paste0("PC", 1:6), 
+                                   "cpPC1", "cpPC2", "event"), covar=covs)
+  
+  comparison_df$negLogP <- apply(comparison_df, 1, function(row) {
+    pc <- row["pc"]
+    covar <- row["covar"]
+    nlp <- tryCatch({
+      lm_fit <- lm(as.formula(paste0(pc, "~", covar)), data=nmd)
+      pVal <- anova(lm_fit)[covar, "Pr(>F)"]
+      -log10(pVal)
+    }, error=function(e) 0)
+    if(is.na(nlp)) 0 else min(nlp, 20)
+  })
+  
+  ggplot(comparison_df, aes(x=pc, y=forcats::fct_rev(covar), fill=negLogP)) +
+    geom_tile(color="white") +
+    scale_fill_gradient2(low='#0000FF',mid='#FFFFFF',high='#FF0000') +
+    scale_x_discrete(position="top") +
+    labs(title=toupper(cohort),
+         caption="Note: -log(p-values) capped at 20 to aid visualization.") +
+    theme(axis.title=element_blank())
+}
+
+whiVarPlt <- make_variation_plot("whi")
+fhsVarPlt <- make_variation_plot("fhs")
+```
+
+```{r ewas-prep}
+my_try <- function(expr, CpG) {
+  # Captures model failures and returns successful result or vector of NAs
+  tryCatch(expr, error=function (e) {
+    print(e)
+    c(CpG, rep(NA, 3))
+    })
+}
+
+run_int_model <- function(probe_data, covar_data, model_spec) {
+  # Given a row of the M-value matrix, bind that methylation
+  # data to the covariate data and run Cox proportional hazards regression
+  # Args:
+  #   probe_data: Methylation data for a specific CpG site
+  #   covar_data: Covariate + event data frame (subjects should match probe_data)
+  #   model_spec: String containing the model formula specification
+  # Returns:
+  #   A 1x3 matrix containing the regression coefficient, z-score and p-value 
+  # 
+  # 
+  ## ABOVE COMMENTS HAVEN'T BEEN UPDATED
+  CpG <- rownames(probe_data)
+  probe_data <- as.vector(probe_data)
+  outlier_TF <- (probe_data < quantile(probe_data, 0.25) - 3 * IQR(probe_data) | 
+    (probe_data > quantile(probe_data, 0.75) + 3 * IQR(probe_data)))
+  model_data <- cbind(covar_data, meth=as.numeric(probe_data),
+                      survObj=Surv(time=covar_data$time, event=covar_data$event))
+  my_try({
+    lm_fit <- lm(as.formula(model_spec), data=model_data, subset=!outlier_TF)
+    c(CpG=CpG, summary(lm_fit)$coef[c('meth'), c('Estimate', 't value', 'Pr(>|t|)')])
+  }, CpG)
+}
+```
+
+```{r ewas-discovery, cache=1}
+ewis_model_whi <- paste0("int_product ~ meth + age + race + bmi + smk_now + smk_py ",
+                        "+ CD4T + CD8T + Bcell + NK + Mono + Gran + dnaPull")
+
+cl <- makePSOCKcluster(detectCores())
+registerDoParallel(cl)
+
+whi_res_list <- foreach(meth=iter(betas_whi, by="row"), 
+                        .packages="survival") %dopar%
+  run_int_model(meth, nmd_whi, ewis_model_whi)
+
+stopCluster(cl)
+
+whi_res <- do.call(rbind, whi_res_list) %>%
+  data.frame(stringsAsFactors=F, check.names=F) %>%
+  dplyr::rename(p=`Pr(>|z|)`) %>%
+  mutate_at(c("coef", "z", "p"), as.numeric) %>%
+  mutate(fdr=p.adjust(p, method="BH")) %>%
+  arrange(p)
+```
+
+```{r ewas-replication, cache=1, eval=F}
+ewas_model_fhs <- paste0("survObj ~ meth + sex + age + bmi + smk_now + smk_py", 
+                        " + CD4T + CD8T + Bcell + NK + Mono + Gran + center + ",
+                        paste0("cpPC", 1:7, collapse="+"))
+
+cl <- makePSOCKcluster(detectCores())
+registerDoParallel(cl)
+
+fhs_res_list <- foreach(meth=iter(betas_fhs, by="row"), 
+                        .packages="survival") %dopar%
+  run_cox_model(meth, nmd_fhs, ewas_model_fhs)
+
+stopCluster(cl)
+
+fhs_res <- do.call(rbind, fhs_res_list) %>%
+  data.frame(stringsAsFactors=F, check.names=F) %>%
+  dplyr::rename(p=`Pr(>|z|)`) %>%
+  mutate_at(c("coef", "z", "p"), as.numeric) %>%
+  mutate(fdr=p.adjust(p, method="BH")) %>%
+  arrange(p)
+```
+
+```{r ewas-inflation}
+make_qqplot <- function(p_vec, plotTitle="Title") {
+  p_vec <- p_vec[!is.na(p_vec)]
+  qqplot(-log10(1:length(p_vec) / length(p_vec)), -log10(p_vec), pch=".", 
+         main=plotTitle, xlab="Expected (-logP)", ylab="Observed (-logP)")
+  abline(0, 1, col="red")
+}
+
+gControl <- function(p_vals) {
+  # See van Iterson 2017 methods and/or Lehne 2015 code for details on genomic control for EWAS
+  # Below is modeled after Lehne 2015
+  lambda <- median(qchisq(p_vals, df=1, lower.tail=F), 
+                   na.rm=T) / qchisq(0.5, df=1)
+  round(lambda, 2)
+}
+```
+
+```{r ewas-discovery-investigation, warning=F}
+qqman_input_whi <- whi_res %>%
+  inner_join(select(anno_450k, Name, chr, pos), by=c("CpG"="Name")) %>%
+  mutate(CHR=as.numeric(gsub("chr", "", chr)), BP=as.numeric(pos), 
+         P=as.numeric(p)) %>%
+  na.omit()
+
+make_qqplot(whi_res$p, paste0("lambda = ", gControl(whi_res$p)))
+manhattan(qqman_input_whi)
+```
+
+```{r top-hits, include=F}
+bonferroni_threshold <- 0.05 / nrow(whi_res)
+whi_to_fhs_replication <- whi_res %>%
+  filter(p < bonferroni_threshold, !is.na(p)) %>%
+  left_join(fhs_res, by="CpG", suffix=c(".whi", ".fhs"))
+bonferroni_tbl <- whi_to_fhs_replication %>%
+  select(-contains("z"), -contains("fdr"))
+fdr_tbl <- whi_res %>%
+  filter(fdr < 0.05) %>%
+  mutate(direction=ifelse(sign(coef) == 1, "+", "-"),
+         p=as.character(signif(p,3))) %>%
+  inner_join(select(anno_450k, Name, chr, UCSC_RefGene_Group, 
+                    UCSC_RefGene_Name), by=c("CpG"="Name")) %>%
+  select(CpG, chr, direction, p, UCSC_RefGene_Group, UCSC_RefGene_Name)
+```

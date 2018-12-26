@@ -1,0 +1,11 @@
+# Data directories
+data/*
+cache/*
+opt/*
+
+# Binary files
+*.RData
+
+# Documents
+*.docx
+*.pptx
