@@ -111,26 +111,25 @@ So, the model being used in each GWAS is the following:
 $Y=\alpha g+X\beta+\epsilon$,
 where Y is the product of two standardized variables (SFA and LDL-C), g is a vector of genotype dosages at the SNP in question, and X is a matrix of covariates.
 
-
 # Simulations
 
 Strategy: for each simulation...
 
-1. Draw N SFA-LDL correlations from a normal distribution ($N(0.1,0.1)$)
-2. Draw a single SFA and LDL value for each correlation from a multivariate normal distribution ($N(\begin{pmatrix}mean_{sfa}\\mean_{ldl}\end{pmatrix}, \begin{pmatrix}var_{sfa} & cov_{sfa\_ldl} \\ cov_{sfa\_ldl} & var_{ldl}\end{pmatrix})$) with parameters:
-    - SFA (mean=20, sd=5)
-    - LDL (mean=120, sd=20)
-3. Draw a genotype vector (simulating a single variant) as a set of 2 draws per individual from a Bernoulli distribution (0/1 value) with base probability of some minor allele frequency that is a function of the underlying SFA/LDL correlation
-4. Use repeated simulations (100) to calculate power for each set of parameters using a linear model predicting $SFA_{scaled}*LDL_{scaled}$ from genotype
+1. Draw N genotypes from a binomial distribution (binom(2, maf)).
+2. Draw SFA intakes with a potential genotype effect ($N(\beta_{SFA}*g, 1)$).
+3. Draw LDL values with a direct genotype effect, a direct SFA effect, and a genotype-SFA interaction ($N(\beta_{LDL}*g+\beta_{SFA}*SFA+\beta_{int}*SFA*g, 1)$)).
 
-Default values for the parameters:
+Repeated simulations (100) are then used to calculate power for each set of marameters using a linear model predicting $SFA_{scaled}*LDL_{scaled}$ from genotype.
 
-* N = 5000
-* Std. dev. of the underlying correlation values = 0.1
-* Minor allele frequency = 0.2
-* Change in $p_{binomial}$ per std. dev. of the underlying correlation = 0.1
+Default parameter values:
 
-```{r run-simulations}
+* N = 1000
+* $\beta_{g\_SFA}$ = 0.1
+* $\beta_{g\_LDL}$ = 0.2
+* $\beta_{SFA\_LDL}$ = 0.1
+* $\beta_{int}$ = 1 * $\beta_{SFA\_LDL}$ (interaction effect magnitude is similar to the genotype main effect)
+
+```{r run-simulations, cache=1}
 N <- 10000
 maf <- 0.2
 
@@ -143,8 +142,6 @@ g <- rbinom(N, 2, maf)
 sfa <- rnorm(N, g * beta_g_sfa, 1)
 ldl <- rnorm(N, g * beta_g_ldl + sfa * beta_sfa_ldl + 
                (g - 2 * maf) * sfa * beta_interaction, 1)
-
-summary(lm(scale(sfa) * scale(ldl) ~ g))$coef
 
 simulate_geno_pheno <- function(N=1000, maf=0.2,
                                 beta_g_sfa=0.1, beta_g_ldl=0.2,
@@ -195,17 +192,6 @@ powers <- param_variations %>%
                        varied == "beta_int" ~ beta_int),
          var=factor(var),
          varied=factor(varied, levels=c("N", "maf", "beta_g_ldl", "beta_int")))
-
-ggplot(powers, aes(x=var, y=power_nominal)) +
-  geom_bar(stat="identity") +
-  facet_wrap(~varied, scales="free_x") +
-  labs(title="Power at nominal significance (alpha = 0.05)", 
-       x=NULL, y="Power (%)")
-ggplot(explored_params, aes(x=var, y=power_gw)) +
-  geom_bar(stat="identity") +
-  facet_wrap(~varied, scales="free_x", nrow=2) +
-  labs(title="Power at genome-wide significance (alpha = 5e-8)",
-       x=NULL, y="Power (%)")
 ```
 
 ```{r negative-simulations}
