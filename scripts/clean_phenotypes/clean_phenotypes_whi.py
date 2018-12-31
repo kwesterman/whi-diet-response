@@ -252,3 +252,13 @@ gwas_phenos.query('race == "black"').to_csv(
     "../data/processed/whi/whi_black_gwas_phenos.txt", sep=" ", index=False)
 gwas_phenos.query('race == "hispanic"').to_csv(
     "../data/processed/whi/whi_hispanic_gwas_phenos.txt", sep=" ", index=False)
+
+# List of WHI dietary modification trial partifcipants
+dm_phenos = (whi_metadata
+             .query('dm_trial == True')
+             .merge(pc_df, on="subjID")
+             .assign(FID = lambda x: x.SampleID,
+                     IID = lambda x: x.SampleID)
+             .filter(['FID', 'IID'])
+             .drop_duplicates())
+dm_phenos.to_csv("../data/processed/whi_DM_ids.txt", sep=" ", index=False)
