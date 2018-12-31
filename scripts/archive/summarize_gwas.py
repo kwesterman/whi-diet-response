@@ -19,14 +19,14 @@ res = pd.read_csv(res_file, delim_whitespace=True)
 
 # Assess inflation
 def make_qqplot(pvec):
-    lam = np.median(stats.chi2.ppf(1 - res.P, df=1)) / stats.chi2.ppf(0.5, df=1)
+    lam = np.nanmedian(stats.chi2.ppf(1 - res.P, df=1)) / stats.chi2.ppf(0.5, df=1)
     x = -np.log10((np.arange(len(pvec)) + 1) / len(pvec))
     y = -np.log10(np.sort(pvec))
     plt.plot(x, x, color="r")
     plt.scatter(x, y, color="blue", s=0.1)
     plt.xlabel("-logP expected")
     plt.ylabel("-logP observed")
-    plt.title(f"lambda = {lam}")
+    plt.title(f"lambda = {lam.round(2)}")
     return None
 
 make_qqplot(res.P)
@@ -42,13 +42,15 @@ plt.savefig(res_file.replace(".res", "_qq.png"))
 #plt.savefig(res_file.replace(".res", "_qq.png"))
 
 # SNP annotations
-snp_annot = pd.read_csv(
-    "../data/processed/snp_annotations/snp_annot_hg19_nodups.txt",
-    sep="\t", header=None, usecols=[0, 1, 2], names=['chr', 'bp', 'id'])
+snp_annot = pd.read_pickle("../data/processed/snp_annotations/snp_annot_hg19_nodups.pkl")
+#snp_annot = pd.read_csv(
+#    "../data/processed/snp_annotations/snp_annot_hg19_nodups.txt",
+#    sep="\t", header=None, usecols=[0, 1, 2], names=['chr', 'bp', 'id'])
 
 res = (res 
        .query('P < 1e-2') 
-       .merge(snp_annot, left_on="ID", right_on="id"))
+       .merge(snp_annot, left_on="ID", right_on="id")
+       .loc[lambda x: x.chr.isin(np.arange(1, 23))])
 
 # Set color scheme and create Manhattan plot
 cmap = plt.get_cmap('viridis')
@@ -66,3 +68,6 @@ manhattan(res.P.values,
           lines=[5,7.5],
           lines_colors=['b','r'])
 plt.savefig(res_file.replace(".res", "_manhattan.png"))
+
+# Top hits
+res.sort_values('P').to_csv(res_file.replace(".res", "_top_hits.txt"))
