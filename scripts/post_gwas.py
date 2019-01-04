@@ -22,11 +22,10 @@ snp_annot = (pd.read_pickle("../data/processed/snp_annotations/snp_annot_hg19_no
 #    sep="\t", header=None, usecols=[0, 1, 2], names=['chr', 'bp', 'id'])
 
 # Import results file and merge with SNP annotation
-res = pd.read_csv(res_file, delim_whitespace=True)
+res = (pd.read_csv(res_file, delim_whitespace=True)
+       .rename({'ID': 'SNP'}, axis=1))  # GWAS and M-A have diff. ID col names
        #.merge(snp_annot, left_on="ID", right_on="id")
        #.loc[lambda x: x.chr.isin(np.arange(1, 23))])
-idx_col = "SNP" if "meta" in res_file else "ID"  # Different name in M-A output
-res = res.rename({idx_col: 'SNP'}, axis=1)
 res_annot = (res.set_index("SNP")
              .join(snp_annot, how="inner")
              .rename_axis("SNP")
@@ -45,7 +44,7 @@ if "meta" in res_file:
 
 # Assess inflation
 def make_qqplot(pvec):
-    lam = np.nanmedian(stats.chi2.ppf(1 - res.P, df=1)) / stats.chi2.ppf(0.5, df=1)
+    lam = np.nanmedian(stats.chi2.ppf(1 - pvec, df=1)) / stats.chi2.ppf(0.5, df=1)
     x = -np.log10((np.arange(len(pvec)) + 1) / len(pvec))
     y = -np.log10(np.sort(pvec))
     plt.plot(x, x, color="r")
@@ -55,18 +54,18 @@ def make_qqplot(pvec):
     plt.title(f"lambda = {lam.round(2)}")
     return None
 
-make_qqplot(res_annot.P)
+make_qqplot(res_annot["P(R)"])
 plt.savefig(re.sub(r"\.[a-z]+", "_qq.png", res_file))
 
 # Set color scheme and create Manhattan plot
-res_annot = res_annot.query('P < 1e-2')  # Easier to plot fewer points
+res_annot = res_annot.loc[res_annot["P(R)"] < 1e-2]  # Easier to plot fewer points
 
 cmap = plt.get_cmap('viridis')
 colors = [cmap(i) for i in [0.0,0.33,0.67,0.90]]
 chr_labels = np.array([str(i) for i in range(1, 23)])
 chr_labels[12::2] = ''
 
-manhattan(res_annot.P.values,
+manhattan(res_annot["P(R)"].values,
           res_annot.bp.values,
           res_annot.chr.astype(str),
           '',
