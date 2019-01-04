@@ -1,29 +1,50 @@
 ---
 title: Genetic scores for saturated fat response prediction
-output:
-  bookdown::pdf_document2:
-    fig_caption: true
-    toc: false
+output: pdf_document
 ---
 
 ```{r setup, include=F}
-knitr::opts_chunk$set(echo=F)
+knitr::opts_chunk$set(echo=F, cache.path="../cache/sfa_ldl/",
+                      fig.path="../output/figures/sfa_ldl/")
 suppressMessages(silent <- lapply(
-  c("knitr", "tidyverse", "cowplot", "parallel"), library, character.only=T))
+  c("knitr", "tidyverse", "cowplot", "parallel", "kableExtra"), library, character.only=T))
 ```
 
 ```{r load-metadata, message=F}
-raw_phenos_fhs <- read_csv("../int/metaData_fhs.csv")
+# raw_phenos_fhs <- read_csv("../data/processed/metaData_fhs.csv")
+raw_phenos_fhs <- read_csv("../data/processed/metadata_fhs.csv")
 
-raw_phenos_whi <- read_csv("../int/metaData_whi.csv", col_types=cols(sex="c"))
+raw_phenos_whi <- read_csv("../data/processed/metadata_whi.csv", 
+                           col_types=cols(sex="c", lipid_med="l", dm_trial="l",
+                                          dm_intervention="l"))
 
-raw_phenos_mesa <- read_csv("../int/metaData_mesa.csv")
+raw_phenos_mesa <- read_csv("../data/processed/metadata_mesa.csv")
 
-# raw_phenos_bprhs <- read_csv("../int/metaData_bprhs.csv")
-# bprhs_id_link <- read_csv("../data/bprhs/admin/BPRHS_id_link.csv")
+raw_phenos_bprhs <- read_csv("../data/processed/metadata_bprhs.csv")
+bprhs_id_link <- read_csv("../data/raw/bprhs/admin/BPRHS_id_link.csv")
 ```
 
 ```{r load-scores, message=F}
+# models <- c("fhs", "whi_white", "mesa_cau")
+# studies <- c("fhs", "whi_white", "mesa_cau")
+
+parse_scorefile <- function(filename) {
+  read_tsv(filename) %>%
+    rename(subjID=IID, score=SCORE1_AVG) %>%
+    select(subjID, score)
+}
+
+whi_sample_to_subject <- read_tsv("../data/raw/whi/sample_info.txt", skip=15) %>%
+  rename(sampleID=SampleID, subjID=SubjectID) %>%
+  select(sampleID, subjID)
+
+whi_scores <- parse_scorefile("../data/processed/sfa_ldl/whi_scores.sscore") %>%
+  rename(sampleID=subjID) %>%
+  inner_join(whi_sample_to_subject, by="sampleID") %>%
+  mutate(subjID=paste0("whi_", subjID))
+```
+
+```{r load-scores-old, message=F, eval=F}
 models <- c("fhs", "whi_white", "mesa_cau")
 studies <- c("fhs", "whi_white", "mesa_cau")
 
@@ -35,7 +56,7 @@ parse_scorefile <- function(filename) {
 
 md_combos <- expand.grid(model=models, study=studies, stringsAsFactors=F)
 all_scores_long <- map2_dfr(md_combos$model, md_combos$study, function(m, s) {
-  parse_scorefile(paste0("../int/sfa/", s, "_scores_", m, "_model.profile")) %>%
+  parse_scorefile(paste0("../data/processed/sfa/", s, "_scores_", m, "_model.profile")) %>%
     mutate(model=m,
            subset=s)
 })
@@ -54,7 +75,7 @@ all_scores <- all_scores_long %>%
 ```{r clean-data, message=F}
 phenos_fhs <- raw_phenos_fhs %>%
   filter(lipid_med_5 == F) %>%
-  mutate(ldl=ldl_5, bmi=bmi_5, sfa=sfa_5, pufa=pufa_5, age=age_5,
+  mutate(ldl=ldl_5, bmi=bmi_5, sfa_pct=sfa_pct_5, pufa=pufa_pct_5, age=age_5,
          subjID=paste0("fhs_", subjID))
 
 phenos_whi <- raw_phenos_whi %>%
@@ -63,30 +84,34 @@ phenos_whi <- raw_phenos_whi %>%
   mutate(subjID=paste0("whi_", subjID))
 phenos_whi_white <- phenos_whi %>%
   filter(race == "white")
-phenos_nondm <- phenos_whi_white %>%
+phenos_nondm <- phenos_whi %>%
   filter(dm_trial == F,
-         visitYear == 0)
-phenos_dm <- phenos_whi_white %>%
+         visit_year == 0)
+phenos_dm <- phenos_whi %>%
   filter(dm_trial == T,
-         visitYear == 0)
-phenos_whi_intervention <- phenos_whi_white %>%
+         visit_year == 0)
+phenos_whi_intervention <- phenos_whi %>%
   filter(dm_trial == T,
          dm_intervention == T) %>%
   group_by(subjID, age, race, sex) %>%
   filter(!is.na(ldl),
          n() > 1) %>%
-  arrange(visitYear) %>%
-  summarise(delta_ldl=ldl[n()] - ldl[1],
-            delta_sfa=sfa[n()] - sfa[1])
-phenos_whi_control <- phenos_whi_white %>%
+  arrange(visit_year) %>%
+  summarise(baseline_ldl=ldl[1],
+            baseline_sfa_pct=sfa_pct[1],
+            delta_ldl=ldl[n()] - ldl[1],
+            delta_sfa_pct=sfa_pct[n()] - sfa_pct[1])
+phenos_whi_control <- phenos_whi %>%
   filter(dm_trial == T,
          dm_intervention == F) %>%
   group_by(subjID, age, race, sex) %>%
   filter(!is.na(ldl),
          n() > 1) %>%
-  arrange(visitYear) %>%
-  summarise(delta_ldl=ldl[n()] - ldl[1],
-            delta_sfa=sfa[n()] - sfa[1])
+  arrange(visit_year) %>%
+  summarise(baseline_ldl=ldl[1],
+            baseline_sfa_pct=sfa_pct[1],
+            delta_ldl=ldl[n()] - ldl[1],
+            delta_sfa_pct=sfa_pct[n()] - sfa_pct[1])
 
 phenos_mesa <- raw_phenos_mesa %>%
   mutate(race=c("white", "asian", "black", "hispanic")[race],
@@ -96,11 +121,9 @@ phenos_mesa <- raw_phenos_mesa %>%
 phenos_mesa_white <- phenos_mesa %>%
   filter(race == "white")
 
-# phenos_bprhs <- raw_phenos_bprhs %>%
-#   dplyr::rename(subjID=studyid) %>%
-#   mutate(lipid_med=as.logical(lipid_med))
+phenos_bprhs <- raw_phenos_bprhs %>%
+  mutate(lipid_med=as.logical(lipid_med))
 # scores_bprhs <- inner_join(phenos_bprhs, filter(all_scores, study == "bprhs"))
-# names(phenos_fhs) <- gsub("_5", "", names(phenos_fhs))
 ```
 
 # Model intuition
@@ -123,7 +146,7 @@ Repeated simulations (100) are then used to calculate power for each set of mara
 
 Default parameter values:
 
-* N = 1000
+* N = 5000
 * $\beta_{g\_SFA}$ = 0.1
 * $\beta_{g\_LDL}$ = 0.2
 * $\beta_{SFA\_LDL}$ = 0.1
@@ -168,11 +191,11 @@ calc_power <- function(arglist, n_sims=100, alpha=5e-8) {
 vary_N <- data.frame(N=c(1e3, 5e3, 1e4, 5e4),
                      maf=0.2, beta_g_ldl=0.1, beta_int=0.1)
 vary_maf <- data.frame(maf=c(0.01, 0.05, 0.1, 0.2, 0.3, 0.4),
-                     N=1e3, beta_g_ldl=0.1, beta_int=0.1)
+                     N=5e3, beta_g_ldl=0.1, beta_int=0.1)
 vary_beta_g_ldl <- data.frame(beta_g_ldl=c(0.01, 0.05, 0.1, 0.2, 0.3, 0.4),
-                     N=1e3, maf=0.2, beta_int=0.1)
+                     N=5e3, maf=0.2, beta_int=0.1)
 vary_beta_int <- data.frame(beta_int=c(0.01, 0.05, 0.1, 0.2, 0.3, 0.4),
-                     N=1e3, maf=0.2, beta_g_ldl=0.1)
+                     N=5e3, maf=0.2, beta_g_ldl=0.1)
 param_variations <- bind_rows(list(N=vary_N, maf=vary_maf,
                                    beta_g_ldl=vary_beta_g_ldl,
                                    beta_int=vary_beta_int), .id="varied")
@@ -203,8 +226,8 @@ neg_sims_gw <- c(calc_power(list(beta_g_ldl=0.1, beta_g_sfa=0.1, beta_int=0)),
 neg_sim_tbl <- data.frame(beta_g_ldl=c(0.1, 0.3, 0.5, 0.5),
                           beta_g_sfa=c(0.1, 0.3, 0.5, 0.1),
                           power_GW=neg_sims_gw)
-kable(neg_sim_tbl, 
-      caption("Negative simulations: fraction of false positives when beta_int=0"))
+kable(neg_sim_tbl,
+      caption="Negative simulations: fraction of false positives when interaction beta is 0")
 ```
 
 ```{r run-simulations-old, cache=1, eval=F}
@@ -259,33 +282,16 @@ p_vecs <- with(params_explore, mcmapply(function (a,b,c,d) get_pvals(
 ```
 
 ```{r show-simulations}
-power_calc <- function(p_vec, alpha) {
-  sum(p_vec < alpha) / length(pvec)
-}
-
-powers_nominal <- apply(p_vecs, 2, power_calc, 0.05)
-powers_genome_wide <- apply(p_vecs, 2, power_calc, 5e-8)
-
-params_explore$power_nominal <- powers_nominal
-params_explore$power_gw <- powers_genome_wide
-params_explore <- params_explore %>%
-  mutate(var=case_when(varied == "N" ~ N,
-                       varied == "sd_corr" ~ sd_corr,
-                       varied == "maf" ~ maf,
-                       varied == "delta_p_per_sd" ~ delta_p_per_sd),
-         var=factor(var),
-         varied=factor(varied, levels=c("N", "sd_corr", "maf", "delta_p_per_sd")))
-
-ggplot(params_explore, aes(x=var, y=power_nominal)) +
+ggplot(powers, aes(x=var, y=power_nominal)) +
   geom_bar(stat="identity") +
   facet_wrap(~varied, scales="free_x") +
   labs(title="Power at nominal significance (alpha = 0.05)", 
-       x=NULL, y="Power (%)")
-ggplot(params_explore, aes(x=var, y=power_gw)) +
+       x=NULL, y="Power")
+ggplot(powers, aes(x=var, y=power_gw)) +
   geom_bar(stat="identity") +
   facet_wrap(~varied, scales="free_x") +
   labs(title="Power at genome-wide significance (alpha = 5e-8)", 
-       x=NULL, y="Power (%)")
+       x=NULL, y="Power")
 ```
 
 # Individual GWAS results
@@ -298,6 +304,7 @@ GWAS model (as above): $Y=\alpha g+X\beta+\epsilon$
 * X is a matrix of covariates
 
 Inclusion criteria:
+
 * White
 * No lipid medication use
 
@@ -306,8 +313,10 @@ Inclusion criteria:
 * N ~ 750 unrelated individuals
 * Covariates: age, sex, BMI, PUFA
 
-```{r fhs-manhattan}
-include_graphics("../int/sfa/fhs_res_manhattan.png")
+```{r fhs-plots}
+fhs_qq <- ggdraw() + draw_image("../data/processed/sfa_ldl/fhs_qq.png")
+fhs_man <- ggdraw() + draw_image("../data/processed/sfa_ldl/fhs_manhattan.png")
+plot_grid(fhs_qq, fhs_man, ncol=2)
 ```
 
 ## WHI
@@ -316,7 +325,22 @@ include_graphics("../int/sfa/fhs_res_manhattan.png")
 * Covariates: age, BMI, PUFA, 5 ancestry principal components
 
 ```{r whi-manhattan}
-include_graphics("../int/sfa/whi_white_res_manhattan.png")
+whi_white_qq <- ggdraw() + 
+  draw_image("../data/processed/sfa_ldl/whi_white_qq.png")
+whi_white_man <- ggdraw() + 
+  draw_image("../data/processed/sfa_ldl/whi_white_manhattan.png")
+whi_black_qq <- ggdraw() + 
+  draw_image("../data/processed/sfa_ldl/whi_black_qq.png")
+whi_black_man <- ggdraw() + 
+  draw_image("../data/processed/sfa_ldl/whi_black_manhattan.png")
+whi_hispanic_qq <- ggdraw() + 
+  draw_image("../data/processed/sfa_ldl/whi_hispanic_qq.png")
+whi_hispanic_man <- ggdraw() + 
+  draw_image("../data/processed/sfa_ldl/whi_hispanic_manhattan.png")
+plot_grid(whi_white_qq, whi_white_man, 
+          whi_black_qq, whi_black_man,
+          whi_hispanic_qq, whi_hispanic_man,
+          nrow=3, ncol=2)
 ```
 
 ## MESA
@@ -325,9 +349,99 @@ include_graphics("../int/sfa/whi_white_res_manhattan.png")
 * Covariates: age, BMI, PUFA
 
 ```{r mesa-manhattan}
-include_graphics("../int/sfa/mesa_cau_res_manhattan.png")
+mesa_white_qq <- ggdraw() + 
+  draw_image("../data/processed/sfa_ldl/mesa_white_qq.png")
+mesa_white_man <- ggdraw() + 
+  draw_image("../data/processed/sfa_ldl/mesa_white_manhattan.png")
+mesa_black_qq <- ggdraw() + 
+  draw_image("../data/processed/sfa_ldl/mesa_black_qq.png")
+mesa_black_man <- ggdraw() + 
+  draw_image("../data/processed/sfa_ldl/mesa_black_manhattan.png")
+# mesa_hispanic_qq <- ggdraw() + 
+#   draw_image("../data/processed/sfa_ldl/mesa_hispanic_qq.png")
+# mesa_hispanic_man <- ggdraw() + 
+#   draw_image("../data/processed/sfa_ldl/mesa_hispanic_manhattan.png")
+# mesa_asian_qq <- ggdraw() +
+#   draw_image("../data/processed/sfa_ldl/mesa_asian_qq.png")
+# mesa_asian_man <- ggdraw() +
+#   draw_image("../data/processed/sfa_ldl/mesa_asian_manhattan.png")
+plot_grid(mesa_white_qq, mesa_white_man, 
+          mesa_black_qq, mesa_black_man,
+          # mesa_hispanic_qq, mesa_hispanic_man,
+          # mesa_asian_qq, mesa_asian_man,
+          nrow=2, ncol=2)
 ```
 
+
+# Meta-analysis results
+
+Fixed-effects meta-analysis
+
+## Whites only
+
+WHI (not in diet mod. arm, white) + FHS + MESA (white)
+
+```{r meta-white-plots}
+white_meta_qq <- ggdraw() + draw_image("../data/processed/sfa_ldl/white_meta_qq.png")
+white_meta_man <- ggdraw() + draw_image("../data/processed/sfa_ldl/white_meta_manhattan.png")
+plot_grid(white_meta_qq, white_meta_man, ncol=2)
+```
+
+## Non-whites
+
+WHI (not in diet mod. arm, black + hispanic) + MESA (black + hispanic + asian)
+
+```{r meta-nonwhite-plots}
+nonwhite_meta_qq <- ggdraw() + draw_image("../data/processed/sfa_ldl/nonwhite_meta_qq.png")
+nonwhite_meta_man <- ggdraw() + draw_image("../data/processed/sfa_ldl/nonwhite_meta_manhattan.png")
+plot_grid(nonwhite_meta_qq, nonwhite_meta_man, ncol=2)
+```
+
+## All races
+
+WHI (not in diet mod. arm, all races) + FHS + MESA (all) + BPRHS
+
+```{r meta-all-plots}
+all_meta_qq <- ggdraw() + draw_image("../data/processed/sfa_ldl/all_meta_qq.png")
+all_meta_man <- ggdraw() + draw_image("../data/processed/sfa_ldl/all_meta_manhattan.png")
+plot_grid(all_meta_qq, all_meta_man, ncol=2)
+```
+
+## Sanity check: specific SNPs of interest
+
+SNPs from CardioGxE (Parnell et al., 2014) showing GxE for SFA --> LDL-C should in theory be found by this analysis.
+
+```{r specific-snps, message=F}
+cardio_gxe <- read_tsv("../data/raw/literature/cardio_gxe_catalog.txt", skip=2)
+sfa_gxe <- cardio_gxe %>%
+  filter(grepl("SFA", `Environmental factor`),
+         grepl("LDL", Phenotype),
+         `Interaction significance` == "significant interaction") %>%
+  select(SNP, Gene, `Environmental factor`, Phenotype) %>%
+  distinct()
+
+system.time(meta_res <- read_tsv("../data/processed/sfa_ldl/all_meta.res"))
+
+lit_comparison <- left_join(sfa_gxe, meta_res, by="SNP") %>%
+  arrange(P)
+
+kable(lit_comparison, booktabs=T) %>%
+  kable_styling(latex_options="scale_down")
+```
+
+## Replication of top hits
+
+```{r replication, eval=F}
+white_res <- read_tsv("../data/processed/sfa_ldl/white_meta.res")
+nonwhite_res <- read_tsv("../data/processed/sfa_ldl/nonwhite_meta.res")
+
+a <- filter(white_res, P < 1e-8)
+b <- filter(nonwhite_res, SNP %in% a$SNP) %>%
+  arrange(P)
+```
+
+
+<!--
 # Initial results
 
 How to combine these cohorts?
@@ -336,7 +450,7 @@ How to combine these cohorts?
 * Approach based on Patil et al. 2018 -- combine individual predictions from each cohort rather than first meta-analyzing the GWAS results
 * They are interested in collaborating on this, but here I have implemented a basic version of one of their strategies.
 
-```{r merged-predictions}
+```{r merged-predictions, eval=F}
 dummy_merge_func <- function(stacked_matrix, train_subsets, weights=NULL) {
   # Takes in a "stacked" matrix of predictions (N_subjects x n_models),
   # calculates appropriate model weights (now just dummy weights),
@@ -379,7 +493,7 @@ all_scores <- all_scores %>%
 # ), c(0.2, 0.6, 0.2))
 ```
 
-```{r add-scores}
+```{r add-scores, eval=F}
 all_phenos <- bind_rows(fhs=phenos_fhs,
                         whi_white=phenos_whi_white,
                         whi_nondm=phenos_nondm,
@@ -397,30 +511,30 @@ full_data <- inner_join(all_phenos, all_scores, by="subjID")
 #                                filter(all_scores, study == "whi_white"))
 # scores_whi_nondm <- filter(scores_whi_white,
 #                            dm_trial == F,
-#                            visitYear == 0)
+#                            visit_year == 0)
 # scores_whi_dm <- filter(scores_whi_white,
 #                         dm_trial == T,
-#                         visitYear == 0)
+#                         visit_year == 0)
 # scores_whi_intervention <- scores_whi_white %>%
 #   filter(dm_trial == T,
 #          dm_intervention == T) %>%
 #   group_by(subjID, score, fh_score, age, race, sex) %>%
 #   filter(sum(!is.na(ldl)) > 1) %>%
-#   arrange(visitYear) %>%
+#   arrange(visit_year) %>%
 #   summarise(delta_ldl=ldl[n()] - ldl[1])
 # scores_whi_control <- scores_whi_white %>%
 #   filter(dm_trial == T,
 #          dm_intervention == F) %>%
 #   group_by(subjID, score, fh_score, age, race, sex) %>%
 #   filter(sum(!is.na(ldl)) > 1) %>%
-#   arrange(visitYear) %>%
+#   arrange(visit_year) %>%
 #   summarise(delta_ldl=ldl[n()] - ldl[1])
 # 
 # scores_mesa <- inner_join(phenos_mesa, filter(all_scores, study == "mesa_cau"),
 #                           by="subjID")
 ```
 
-```{r cs-eval}
+```{r cs-eval, eval=F}
 # phenos_all <- bind_rows(fhs=phenos_fhs,
 #                         whi_dm=phenos_dm,
 #                         whi_nondm=phenos_nondm,
@@ -477,10 +591,13 @@ ggplot(all_slopes_df, aes(x=quant, y=slope, color=subset, group=subset)) +
        y="Slope of SFA -> LDL relationship") +
   facet_wrap(~traintest, scales="free")
 ```
+-->
 
 # Longitudinal results in WHI DM subjects
 
-```{r whi-longitudinal}
+In WHI dietary modification trial subjects, does the polygenic score modify changes in LDL-C (and, specifically, differentially between control and intervention arms)?
+
+```{r whi-longitudinal, fig.asp=1.2, eval=F}
 # intervention_plt_data <- scores_whi_control %>%
 #   mutate(score_quintile=cut(score,
 #                             breaks=quantile(.$fh_score, seq(0, 1, 0.25)),
@@ -491,25 +608,61 @@ ggplot(all_slopes_df, aes(x=quant, y=slope, color=subset, group=subset)) +
 #   summarise(delta=mean(delta_ldl),
 #             se=sd(delta_ldl) / sqrt(n()))
 
-dm_plt_data <- full_data %>%
-  filter(subset %in% c("whi_intervention", "whi_control")) %>%
-  mutate(score_tertile=cut(stack_score,
-                           breaks=quantile(.$stack_score, c(0, 0.33, 0.66, 1)),
-                           labels=paste0("T", 1:3),
-                           include.lowest=T)) %>%
-  group_by(subset, score_tertile) %>%
-  summarise(delta=mean(delta_ldl),
-            se=sd(delta_ldl) / sqrt(n()))
+whi_dm_cs <- inner_join(whi_scores, phenos_dm, by="subjID") %>%
+  filter(visit_year == 0) %>%
+  mutate(sfa_ldl_product=scale(sfa_pct) * scale(ldl))
 
-ggplot(dm_plt_data, aes(x=score_tertile, y=delta)) +
-  geom_point() +
-  geom_errorbar(aes(ymin=delta - se, ymax=delta + se), width=0) +
-  facet_wrap(~subset)
+phenos_dm_long <- bind_rows(list(intervention=phenos_whi_intervention,
+                                 control=phenos_whi_control), .id="arm")
+whi_dm_long <- inner_join(whi_scores, phenos_dm_long, by="subjID") %>%
+  mutate(score_bucket=cut(score, breaks=quantile(score, seq(0, 1, length.out=5)), 
+                          labels=seq(1, 4), include.lowest=T),
+         # score_bucket=cut(score, 3, labels=1:3),
+         delta_sfa_bucket=case_when(delta_sfa_pct < median(delta_sfa_pct) ~ "decreased",
+                                    delta_sfa_pct > 0 ~ "increased",
+                                    TRUE ~ as.character(NA)))
+whi_dm_long_plt_data <- whi_dm_long %>%
+  group_by(arm, score_bucket) %>%
+  summarise(mean_delta_ldl=mean(delta_ldl),
+            SD=sd(delta_ldl),
+            SE=SD / sqrt(n()))
+# whi_dm_long_plt_data_sfabucket <- whi_dm_long %>%
+#   group_by(delta_sfa_bucket, score_bucket) %>%
+#   summarise(mean_delta_ldl=mean(delta_ldl),
+#             SD=sd(delta_ldl),
+#             SE=SD / sqrt(n()))
+  
+by_assignment_plt <- ggplot(data=whi_dm_long_plt_data, aes(x=score_bucket)) +
+  geom_boxplot(data=whi_dm_long, aes(y=delta_ldl), alpha=0.2) +
+  geom_point(data=whi_dm_long, aes(x=score_bucket, y=delta_ldl),
+             alpha=0.3, position=position_jitter()) +
+  coord_cartesian(ylim=c(-100, 60)) +
+  facet_wrap(~arm)
+
+means_plus_ses_plt <- ggplot(data=whi_dm_long_plt_data, aes(x=score_bucket)) +
+  geom_point(data=whi_dm_long_plt_data, 
+             aes(x=score_bucket, y=mean_delta_ldl), 
+             stat="identity") +
+  geom_errorbar(data=whi_dm_long_plt_data, 
+                aes(ymin=mean_delta_ldl - SE, ymax=mean_delta_ldl + SE), width=0) +
+  facet_wrap(~arm)
+
+# by_delta_plt <- ggplot(data=whi_dm_long_plt_data_sfabucket, aes(x=score_bucket)) +
+#   geom_point(aes(x=score_bucket, y=mean_delta_ldl),
+#              stat="identity") +
+#   geom_errorbar(aes(ymin=mean_delta_ldl - SE, ymax=mean_delta_ldl + SE), width=0) +
+#   # geom_boxplot(color="gray") +
+#   geom_point(data=whi_dm_long, aes(x=score_bucket, y=delta_ldl),
+#              alpha=0.2, position=position_jitter()) +
+#   coord_cartesian(ylim=c(-100, 60)) +
+#   facet_wrap(~delta_sfa_bucket)
+
+plot_grid(by_assignment_plt, means_plus_ses_plt, nrow=2)
 
 # need to make sure that there are >1 LDL measurement when taking differences
 ```
 
-```{r whi-longitudinal-measured}
+```{r whi-longitudinal-measured, eval=F}
 measured_plt_data <- full_data %>%
   filter(subset %in% c("whi_intervention", "whi_control")) %>%
   mutate(score_tertile=cut(stack_score,
@@ -528,8 +681,35 @@ ggplot(measured_plt_data, aes(x=score_tertile, y=delta)) +
   facet_wrap(~subset)
 ```
 
+```{r fhs-longitudinal-measured, eval=F}
+measured_plt_data <- full_data %>%
+  filter(subset %in% c("whi_intervention", "whi_control")) %>%
+  mutate(score_tertile=cut(stack_score,
+                           # breaks=quantile(.$stack_score, c(0, 0.33, 0.66, 1)),
+                           breaks=quantile(.$stack_score, c(0, 0.25, 0.5, 0.75, 1)),
+                           labels=paste0("Q", 1:4),
+                           include.lowest=T)) %>%
+  mutate(subset=ifelse(delta_sfa < 0, "decreased SFA", "didn't decrease SFA")) %>%
+  group_by(subset, score_tertile) %>%
+  summarise(delta=mean(delta_ldl),
+            se=sd(delta_ldl) / sqrt(n()))
+  
+ggplot(measured_plt_data, aes(x=score_tertile, y=delta)) +
+  geom_point() +
+  geom_errorbar(aes(ymin=delta - se, ymax=delta + se), width=0) +
+  facet_wrap(~subset)
+```
+
+```{r interaction-tests}
+print("Test for arm-score interaction in predicting delta_LDL:")
+summary(lm(delta_ldl ~ arm * score, data=whi_dm_long))$coef
+
+print("Same test, additionally adjusting for baseline LDL:")
+summary(lm(delta_ldl ~ arm * score + baseline_ldl, data=whi_dm_long))$coef
+```
+
 # Moving forward
 
-* On the question of how to deal with ancestry differences -- Parmigiani lab @ Harvard open to collaboration on prediction from models trained in separate cohorts
 * Application is in to UK Biobank to try to replicate any findings in the 500k subjects there
+* How well do LDL-C or CardioGxE-constructed scores work in comparison to this one?
 
