@@ -1,7 +1,7 @@
 # Data directories
-data/*
-cache/*
-opt/*
+data/
+cache/
+opt/
 
 # Binary files
 *.RData
@@ -9,3 +9,6 @@ opt/*
 # Documents
 *.docx
 *.pptx
+
+# Environment
+env/
