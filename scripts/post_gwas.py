@@ -41,6 +41,7 @@ if "meta" in res_file:
                           "BETA(R)", "Q", "I"]))
     meta_res = res_annot.rename({'chr': 'CHR', 'bp': 'BP'}, axis=1)
     meta_res.to_csv(res_file.replace(".meta", ".res"), sep="\t", index=False)
+    #res_annot['P'] = res_annot['P(R)']  # If want plots to reflect RE p-vals
 
 # Assess inflation
 def make_qqplot(pvec):
@@ -54,18 +55,18 @@ def make_qqplot(pvec):
     plt.title(f"lambda = {lam.round(2)}")
     return None
 
-make_qqplot(res_annot["P(R)"])
+make_qqplot(res_annot["P"])
 plt.savefig(re.sub(r"\.[a-z]+", "_qq.png", res_file))
 
 # Set color scheme and create Manhattan plot
-res_annot = res_annot.loc[res_annot["P(R)"] < 1e-2]  # Easier to plot fewer points
+res_annot = res_annot.loc[res_annot["P"] < 1e-2]  # Easier to plot fewer points
 
 cmap = plt.get_cmap('viridis')
 colors = [cmap(i) for i in [0.0,0.33,0.67,0.90]]
 chr_labels = np.array([str(i) for i in range(1, 23)])
 chr_labels[12::2] = ''
 
-manhattan(res_annot["P(R)"].values,
+manhattan(res_annot["P"].values,
           res_annot.bp.values,
           res_annot.chr.astype(str),
           '',

@@ -1,6 +1,7 @@
 import sys
 import numpy as np
 import pandas as pd
+from scipy import stats
 from sklearn.preprocessing import scale
 
 
@@ -190,7 +191,7 @@ ffq_nutrients_whi_c2 = pd.read_csv("../data/raw/whi/diet/ffq_nutrients_c2.txt",
 ffq_nutrients_whi = (pd.concat([ffq_nutrients_whi_c1, ffq_nutrients_whi_c2],
                                ignore_index=True)
                      .rename({'SUBJID': 'subjID', 'F60VY': 'visit_year', 
-                              'F60ENRGY': 'tot_cal', 'F60FAT': 'tot:fat', 
+                              'F60ENRGY': 'tot_cal', 'F60FAT': 'tot_fat', 
                               'F60SFA': 'sfa', 'F60MFA': 'mufa', 'F60PFA': 'pufa', 
                               'F60CARB': 'carb', 'F60SFPCT': 'sfapct', 
                               'F60SF160': 'palmitic', 'F60PF182': 'linoleic', 
@@ -202,7 +203,9 @@ ffq_nutrients_whi = (pd.concat([ffq_nutrients_whi_c1, ffq_nutrients_whi_c2],
                              mufa_pct = lambda x: x.mufa * 9 / x.tot_cal,
                              pufa_pct = lambda x: x.pufa * 9 / x.tot_cal,
                              palmitic_pct = lambda x: x.palmitic * 9 /
-                             x.tot_cal))
+                             x.tot_cal,
+                             tot_fat_pct = lambda x: x.tot_fat / x.tot_cal,
+                             f2c = lambda x: x.tot_fat / x.carb))
 
 diet_data_whi = ffq_nutrients_whi  # Room to merge in specific food intakes
 
@@ -233,19 +236,50 @@ pc_df = (pd.merge(sample_ids, sample_info, left_on='SampleID', right_on='SAMPLE_
          .reset_index())
 
 # Construct outcome feature and prepare plink-friendly dataset
-gwas_features = ['subjID', 'ldl', 'sfa_pct', 'pufa_pct', 'age', 'bmi', 'race',
-                 'dm_trial', 'PC1', 'PC2', 'PC3', 'PC4', 'PC5']
+def rank_INT(values):
+    # Computes rank-based inverse normal transformation of a Pandas series
+    c = 3.0 / 8
+    ranks = stats.rankdata(values)
+    product_INT = stats.norm.ppf((ranks - c) / (len(ranks) - 2*c + 1))
+    return product_INT
+
+def winsorize(values, SDs_from_mean=4):
+    # Winsorize values based on SDs from mean (rather than percentiles)
+    sd = np.std(values)
+    values[values < values.mean() - 4 * sd] = values.mean() - 4 * sd
+    values[values > values.mean() + 4 * sd] = values.mean() + 4 * sd
+    return values
+
+gwas_variables = ['subjID', 'ldl', 'sfa_pct', 'pufa_pct', 'f2c', 'tot_fat_pct',
+                  'carb', 'age', 'bmi', 'tg', 'glu', 'race', 'dm_trial', 
+                  'PC1', 'PC2', 'PC3', 'PC4', 'PC5']
+phenotypes = ['sfa_ldl', 'fat_ldl', 'f2c_ldl', 
+              'sfa_bmi', 'f2c_bmi', 'f2c_tg', 'f2c_glu']
 gwas_phenos = (whi_metadata
                .query('lipid_med == False & dm_trial == False')
                .filter(gwas_features + ['sex'])
                .dropna()
-               .assign(sfa_ldl_product = lambda x: scale(x.sfa_pct) *
-                       scale(x.ldl))
                .merge(pc_df, on="subjID")
-               .assign(FID = lambda x: x.SampleID,
-                       IID = lambda x: x.SampleID)
-               .filter(['FID', 'IID', 'sex', 'sfa_ldl_product'] + gwas_features))
-
+               .assign(FID = lambda x: x.SampleID, IID = lambda x: x.SampleID)
+               .assign(sfa_ldl = lambda x: scale(x.sfa_pct) * scale(x.ldl),
+                       fat_ldl = lambda x: scale(x.tot_fat_pct) * scale(x.ldl),
+                       f2c_ldl = lambda x: scale(x.f2c) * scale(x.ldl),
+                       sfa_bmi = lambda x: scale(x.sfa_pct) * scale(x.bmi),
+                       f2c_bmi = lambda x: scale(x.f2c) * scale(x.bmi),
+                       f2c_tg = lambda x: scale(x.f2c) * scale(x.tg),
+                       f2c_glu = lambda x: scale(x.f2c) * scale(x.glu))
+               .filter(['FID', 'IID', 'sex'] + phenotypes + gwas_features))
+gwas_phenos_WIN = (gwas_phenos
+                   .filter(phenotypes)
+                   .apply(winsorize)
+                   .rename({p: p + "_WIN" for p in phenotypes}, axis=1))
+gwas_phenos_INT = (gwas_phenos
+                   .filter(phenotypes)
+                   .apply(rank_INT)
+                   .rename({p: p + "_INT" for p in phenotypes}, axis=1))
+gwas_phenos = pd.concat([gwas_phenos, gwas_phenos_WIN, gwas_phenos_INT],
+                        axis=1) 
+               
 gwas_phenos.query('race == "white"').to_csv(
     "../data/processed/whi/whi_white_gwas_phenos.txt", sep=" ", index=False)
 gwas_phenos.query('race == "black"').to_csv(

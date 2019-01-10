@@ -1,6 +1,7 @@
 import sys
 import numpy as np
 import pandas as pd
+from scipy import stats
 from sklearn.preprocessing import scale
 
 
@@ -67,7 +68,10 @@ ffq_fhs_ex5 = (pd.concat([ffq_fhs_ex5_c1, ffq_fhs_ex5_c2])
                        mufa_pct_5 = lambda x: x.mufa_5 * 9 / x.tot_cal_5, 
                        pufa_pct_5 = lambda x: x.pufa_5 * 9 / x.tot_cal_5, 
                        palmitic_pct_5 = lambda x: x.palmitic_5 * 9 / 
-                       x.tot_cal_5)) 
+                       x.tot_cal_5,
+                       tot_fat_5 = lambda x: x.sfa_5 + x.mufa_5 + x.pufa_5,
+                       tot_fat_pct_5 = lambda x: x.tot_fat_5 / x.tot_cal_5,
+                       f2c_5 = lambda x: x.tot_fat_5 / x.carb_5))
 
 ffq_fhs_ex8_c1 = pd.read_csv("../data/raw/fhs/diet/ffq_ex8_c1.txt", sep="\t",
                              skiprows=10)
@@ -87,7 +91,10 @@ ffq_fhs_ex8 = (pd.concat([ffq_fhs_ex8_c1, ffq_fhs_ex8_c2])
                        mufa_pct_8 = lambda x: x.mufa_8 * 9 / x.tot_cal_8, 
                        pufa_pct_8 = lambda x: x.pufa_8 * 9 / x.tot_cal_8, 
                        palmitic_pct_8 = lambda x: x.palmitic_8 * 9 / 
-                       x.tot_cal_8)) 
+                       x.tot_cal_8,
+                       tot_fat_8 = lambda x: x.sfa_8 + x.mufa_8 + x.pufa_8,
+                       tot_fat_pct_8 = lambda x: x.tot_fat_8 / x.tot_cal_8,
+                       f2c_8 = lambda x: x.tot_fat_8 / x.carb_8)) 
 
 ffq_fhs = pd.merge(ffq_fhs_ex5, ffq_fhs_ex8, on="subjID", how="outer")
 
@@ -104,20 +111,50 @@ ped = (pd.read_csv("../data/raw/fhs/fhs_pedigree.txt", sep="\t", skiprows=10)
        .rename(columns={'pedno': 'FID', 'shareid': 'IID'}))
 
 # Construct outcome feature and prepare plink-friendly dataset
-gwas_features = ['subjID', 'ldl_5', 'sfa_pct_5', 'pufa_pct_5', 'age_5', 'bmi_5']
+def rank_INT(values):
+    # Computes rank-based inverse normal transformation of a Pandas series
+    c = 3.0 / 8
+    ranks = stats.rankdata(values)
+    product_INT = stats.norm.ppf((ranks - c) / (len(ranks) - 2*c + 1))
+    return product_INT
+
+def winsorize(values, SDs_from_mean=4):
+    # Winsorize values based on SDs from mean (rather than percentiles)
+    sd = np.std(values)
+    values[values < values.mean() - 4 * sd] = values.mean() - 4 * sd
+    values[values > values.mean() + 4 * sd] = values.mean() + 4 * sd
+    return values
+
+gwas_features = ['subjID', 'ldl_5', 'sfa_pct_5', 'pufa_pct_5', 'tot_fat_pct_5',
+                 'carb_5', 'f2c_5', 'age_5', 'tg_5', 'glu_5', 'bmi_5']
+phenotypes = ['sfa_ldl_5', 'fat_ldl_5', 'f2c_ldl_5', 
+              'sfa_bmi_5', 'f2c_bmi_5', 'f2c_tg_5', 'f2c_glu_5']
 gwas_phenos = (fhs_metadata
                .query('lipid_med_5 == False')
                .filter(gwas_features + ['sex'])
-               .dropna()
-               .assign(sfa_ldl_product_5 = lambda x: scale(x.sfa_pct_5) *
-                       scale(x.ldl_5))
                .merge(ped, left_on="subjID", right_on="IID") 
                .dropna()
                .assign(FID = lambda x: x.subjID,
                        IID = lambda x: x.subjID)
-               .filter(['FID', 'IID', 'sex', 'sfa_ldl_product_5'] + 
-                       gwas_features))
+               .assign(sfa_ldl_5 = lambda x: scale(x.sfa_pct_5) * scale(x.ldl_5),
+                       fat_ldl_5 = lambda x: scale(x.tot_fat_pct_5) * scale(x.ldl_5),
+                       f2c_5_ldl_5 = lambda x: scale(x.f2c_5) * scale(x.ldl_5),
+                       sfa_bmi_5 = lambda x: scale(x.sfa_pct_5) * scale(x.bmi_5),
+                       f2c_5_bmi_5 = lambda x: scale(x.f2c_5) * scale(x.bmi_5),
+                       f2c_5_tg_5 = lambda x: scale(x.f2c_5) * scale(x.tg_5),
+                       f2c_5_glu_5 = lambda x: scale(x.f2c_5) * scale(x.glu_5))
+               .filter(['FID', 'IID', 'sex'] + phenotypes + gwas_features))
                ## FOR THE MOMENT, HAVE NOT FILTERED OUT RELATED SUBJECTS
-
+gwas_phenos_WIN = (gwas_phenos
+                   .filter(phenotypes)
+                   .apply(winsorize)
+                   .rename({p: p + "_WIN" for p in phenotypes}, axis=1))
+gwas_phenos_INT = (gwas_phenos
+                   .filter(phenotypes)
+                   .apply(rank_INT)
+                   .rename({p: p + "_INT" for p in phenotypes}, axis=1))
+gwas_phenos = pd.concat([gwas_phenos, gwas_phenos_WIN, gwas_phenos_INT],
+                        axis=1) 
+               
 gwas_phenos.to_csv("../data/processed/fhs/fhs_gwas_phenos.txt", sep=" ", 
                    index=False)
