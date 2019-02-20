@@ -8,11 +8,11 @@ output:
 ```{r prereqs, include=F}
 library(knitr)
 knitr::opts_chunk$set(echo=F, 
-                      cache.path="../cache//", fig.pos="h")
+                      cache.path="../cache/meth_interaction/", fig.pos="h")
 options(kableExtra.latex.load_packages = FALSE)
 suppressMessages(silent <- lapply(
   c("tidyverse", "parallel", "doParallel", "itertools",
-    "gridExtra", "cowplot",
+    "gridExtra", "cowplot", "qqman",
     "IlluminaHumanMethylation450kanno.ilmn12.hg19"), 
   library, character.only=T))
 ```
@@ -23,9 +23,40 @@ betas_whi <- readRDS("../../meth_cvd/int/betas.qc.norm.filt_whi.rds")
 betas_fhs <- readRDS("../../meth_cvd/int/betas.qc.norm.filt_fhs.rds")
 
 # Load metadata
-metadata_whi <- read_table("../int/sfa/whi_phenos.txt")
-metadata_fhs <- read_table("../int/sfa/fhs_phenos.txt")
-metadata <- bind_rows(whi=metadata_whi, fhs=metadata_fhs, .id="study")
+raw_phenos_whi <- read_csv("../data/processed/metadata_whi.csv", 
+                           col_types=cols(sex="c", lipid_med="l", dm_trial="l",
+                                          dm_intervention="l"))
+metadata_whi <- raw_phenos_whi %>%
+  filter(visit_year == 0) %>%
+  mutate(subjID=paste0("whi_", subjID),
+         ht_med=as.logical(ht_med),
+         dm_med=ifelse(dm_med == "True", T, F),
+         ldl=ifelse(lipid_med, ldl / 0.75, ldl),
+         glu=ifelse(dm_med, glu / 0.75, glu),
+         sbp=ifelse(ht_med, sbp + 15, sbp)) %>%
+  filter(!is.na(ldl)) %>%
+  mutate(int_product=scale(sfa_pct) * scale(ldl),
+         int_product=qnorm((rank(int_product, na.last="keep") - 0.5) / sum(!is.na(int_product))))
+raw_phenos_fhs <- read_csv("../data/processed/metadata_fhs.csv")
+metadata_fhs <- raw_phenos_fhs %>%
+  mutate(
+    # ldl=ldl_5, bmi=bmi_5, sfa_pct=sfa_pct_5, pufa=pufa_pct_5, age=age_5,
+    subjID=paste0("fhs_", subjID)) %>%
+  mutate_at(vars(lipid_med, dm_med, ht_med), as.logical) %>%
+  filter(lipid_med == F) %>%
+  mutate(ht_med=as.logical(ht_med),
+         ldl=ifelse(lipid_med, ldl / 0.75, ldl),
+         glu=ifelse(dm_med, glu / 0.75, glu),
+         sbp=ifelse(ht_med, sbp + 15, sbp)) %>%
+  filter(!is.na(ldl)) %>%
+  mutate(int_product=scale(sfa_pct) * scale(ldl),
+         int_product=qnorm((rank(int_product, na.last="keep") - 0.5) / sum(!is.na(int_product))))
+meth_link <- read_csv("../../meth_cvd/int/metaData.csv") %>%
+  filter(study %in% c("whi", "fhs")) %>%
+  mutate(subjID=paste0(study, "_", subjID)) %>%
+  select(subjID, sampleKey, dnaPull, center)
+metadata <- bind_rows(whi=metadata_whi, fhs=metadata_fhs, .id="study") %>%
+  inner_join(meth_link, by="subjID")
 
 # Load estimated cell counts
 est_cell_counts_whi <- readRDS("../../meth_cvd/int/est_cell_counts_whi.rds")
@@ -136,8 +167,7 @@ run_int_model <- function(probe_data, covar_data, model_spec) {
   probe_data <- as.vector(probe_data)
   outlier_TF <- (probe_data < quantile(probe_data, 0.25) - 3 * IQR(probe_data) | 
     (probe_data > quantile(probe_data, 0.75) + 3 * IQR(probe_data)))
-  model_data <- cbind(covar_data, meth=as.numeric(probe_data),
-                      survObj=Surv(time=covar_data$time, event=covar_data$event))
+  model_data <- cbind(covar_data, meth=as.numeric(probe_data))
   my_try({
     lm_fit <- lm(as.formula(model_spec), data=model_data, subset=!outlier_TF)
     c(CpG=CpG, summary(lm_fit)$coef[c('meth'), c('Estimate', 't value', 'Pr(>|t|)')])
@@ -146,7 +176,7 @@ run_int_model <- function(probe_data, covar_data, model_spec) {
 ```
 
 ```{r ewas-discovery, cache=1}
-ewis_model_whi <- paste0("int_product ~ meth + age + race + bmi + smk_now + smk_py ",
+ewis_model_whi <- paste0("int_product ~ meth + age + race + bmi + smk_now ",
                         "+ CD4T + CD8T + Bcell + NK + Mono + Gran + dnaPull")
 
 cl <- makePSOCKcluster(detectCores())
@@ -160,14 +190,14 @@ stopCluster(cl)
 
 whi_res <- do.call(rbind, whi_res_list) %>%
   data.frame(stringsAsFactors=F, check.names=F) %>%
-  dplyr::rename(p=`Pr(>|z|)`) %>%
-  mutate_at(c("coef", "z", "p"), as.numeric) %>%
+  dplyr::rename(p=`Pr(>|t|)`) %>%
+  mutate_at(vars(Estimate, `t value`, p), as.numeric) %>%
   mutate(fdr=p.adjust(p, method="BH")) %>%
   arrange(p)
 ```
 
-```{r ewas-replication, cache=1, eval=F}
-ewas_model_fhs <- paste0("survObj ~ meth + sex + age + bmi + smk_now + smk_py", 
+```{r ewas-replication, cache=1}
+ewis_model_fhs <- paste0("int_product ~ meth + sex + age + bmi + smk_now", 
                         " + CD4T + CD8T + Bcell + NK + Mono + Gran + center + ",
                         paste0("cpPC", 1:7, collapse="+"))
 
@@ -176,14 +206,14 @@ registerDoParallel(cl)
 
 fhs_res_list <- foreach(meth=iter(betas_fhs, by="row"), 
                         .packages="survival") %dopar%
-  run_cox_model(meth, nmd_fhs, ewas_model_fhs)
+  run_int_model(meth, nmd_fhs, ewis_model_fhs)
 
 stopCluster(cl)
 
 fhs_res <- do.call(rbind, fhs_res_list) %>%
   data.frame(stringsAsFactors=F, check.names=F) %>%
-  dplyr::rename(p=`Pr(>|z|)`) %>%
-  mutate_at(c("coef", "z", "p"), as.numeric) %>%
+  dplyr::rename(p=`Pr(>|t|)`) %>%
+  mutate_at(vars(Estimate, `t value`, p), as.numeric) %>%
   mutate(fdr=p.adjust(p, method="BH")) %>%
   arrange(p)
 ```
@@ -216,7 +246,17 @@ make_qqplot(whi_res$p, paste0("lambda = ", gControl(whi_res$p)))
 manhattan(qqman_input_whi)
 ```
 
-```{r top-hits, include=F}
+```{r a}
+make_qqplot(whi_res$p, paste0("lamda = ", gControl(whi_res$p)))
+```
+
+```{r b}
+print(head(whi_res, 15))
+
+print(head(fhs_res, 15))
+```
+
+```{r top-hits, include=F, eval=F}
 bonferroni_threshold <- 0.05 / nrow(whi_res)
 whi_to_fhs_replication <- whi_res %>%
   filter(p < bonferroni_threshold, !is.na(p)) %>%
