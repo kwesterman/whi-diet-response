@@ -4,16 +4,18 @@
 module load plink2
 
 GENODIR=../data/processed/fhs
-PHENOFILE=$GENODIR/fhs_gwas_phenos.txt
-OUT_PREFIX=../data/processed/f2c_tg/fhs
+PHENOFILE=$GENODIR/fhs_gwas_phenos_statinAdj.txt
+PHENO=$1
+DIR=$2
+OUT_PREFIX=$DIR/fhs
 
 plink2 --pfile $GENODIR/fhs \
 	--pheno $PHENOFILE \
-	--pheno-name f2c_tg_INT_5 \
+	--pheno-name ${PHENO}_INT \
 	--update-sex $PHENOFILE \
-	--covar-name age_5 \
 	--glm sex a0-ref \
 	--out $OUT_PREFIX
+	#--covar-name  \
 
-head -1 $OUT_PREFIX.f2c_tg_INT_5.glm.linear > $OUT_PREFIX.res
-awk '$7 == "ADD"' $OUT_PREFIX.f2c_tg_INT_5.glm.linear >> $OUT_PREFIX.res
+head -1 $OUT_PREFIX.${PHENO}_INT.glm.linear > $OUT_PREFIX.res
+awk '$7 == "ADD"' $OUT_PREFIX.${PHENO}_INT.glm.linear >> $OUT_PREFIX.res
