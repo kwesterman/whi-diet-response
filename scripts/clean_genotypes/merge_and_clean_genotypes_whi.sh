@@ -69,3 +69,22 @@ plink2 --pfile $DIR/whi_tmp \
 	--ref-allele $SNPANNO 4 3 \
 	--make-pgen \
 	--out $DIR/whi
+
+# If desired, some further cleaning/filtering and conversion to bfiles for use by other software
+plink2 --pfile $DIR/whi \
+	--make-bed \
+	--hard-call-threshold 0.1 \
+	--out $DIR/whi
+
+plink --bfile $DIR/whi \
+	--update-chr $SNPANNO 1 3 \
+	--update-map $SNPANNO 2 3 \
+	--make-bed \
+	--out $DIR/whi
+
+plink --bfile $DIR/whi \
+	--maf 0.01 \
+	--geno 0.1 \
+	--chr 1-22 \
+	--make-bed \
+	--out $DIR/whi

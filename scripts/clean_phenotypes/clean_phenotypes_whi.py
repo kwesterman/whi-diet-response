@@ -3,6 +3,8 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 from sklearn.preprocessing import scale
+import statsmodels.formula.api as smf
+import itertools
 
 
 # Risk factors
@@ -152,7 +154,7 @@ hypertension_med_classes = [
     "CALCIUM BLOCKER & HMG COA REDUCTASE INHIBITOR COMB"]
 meds_data_whi = (pd.concat([meds_data_whi_c1, meds_data_whi_c2],
                            ignore_index=True)
-                 .query('F44VY == 1')
+                 #.query('F44VY == 1')
                  .merge(meds_ref_whi, on="TCCODE")
                  .assign(ht_med = lambda x:
                          x.TCNAME.isin(hypertension_med_classes),
@@ -184,6 +186,11 @@ pheno_data_whi = (basic_data_whi
                   .merge(misc_merged, on="subjID", how="left"))
 
 # Diet
+
+def winsorize(x, num_sd=5):
+    return x.clip(lower=x.mean() - num_sd * x.std(),
+                  upper=x.mean() + num_sd * x.std())
+
 ffq_nutrients_whi_c1 = pd.read_csv("../data/raw/whi/diet/ffq_nutrients_c1.txt",
                                    sep="\t", skiprows=10)
 ffq_nutrients_whi_c2 = pd.read_csv("../data/raw/whi/diet/ffq_nutrients_c2.txt",
@@ -191,23 +198,74 @@ ffq_nutrients_whi_c2 = pd.read_csv("../data/raw/whi/diet/ffq_nutrients_c2.txt",
 ffq_nutrients_whi = (pd.concat([ffq_nutrients_whi_c1, ffq_nutrients_whi_c2],
                                ignore_index=True)
                      .rename({'SUBJID': 'subjID', 'F60VY': 'visit_year', 
-                              'F60ENRGY': 'tot_cal', 'F60FAT': 'tot_fat', 
+                              'F60ENRGY': 'tot_cal', 'F60FAT': 'fat', 
+                              'F60PROT': 'pro', 'F60CARB': 'cho',
                               'F60SFA': 'sfa', 'F60MFA': 'mufa', 'F60PFA': 'pufa', 
-                              'F60CARB': 'carb', 'F60SFPCT': 'sfapct', 
-                              'F60SF160': 'palmitic', 'F60PF182': 'linoleic', 
-                              'F60OMGA3': 'n3', 'F60OMGA6': 'n6'}, axis=1)
-                     .filter(['subjID', 'visit_year', 'tot_cal', 'tot_fat',
-                              'sfa', 'mufa', 'pufa', 'carb', 'palmitic',
-                              'linoleic', 'n3', 'n6'])
+                              'F60ALC': 'alc', 'F60FIBER': 'fiber',
+                              'F60FRUIT': 'fruit', 'F60VEG': 'veg',
+                              'F60SF160': 'palm', 'F60PF182': 'linoleic', 
+                              'F60OMGA3': 'n3', 'F60OMGA6': 'n6', 'FRUVEG':
+                              'FV', 'F60SODUM': 'sodium'}, axis=1)
+                     .filter(['subjID', 'visit_year', 'tot_cal', 'fat', 'pro',
+                              'cho', 'sfa', 'mufa', 'pufa', 'alc', 'fiber',
+                              'fruit', 'veg', 'palm', 'linoleic', 'n3', 'n6', 
+                              'FV', 'sodium'])
                      .assign(sfa_pct = lambda x: x.sfa * 9 / x.tot_cal,
                              mufa_pct = lambda x: x.mufa * 9 / x.tot_cal,
                              pufa_pct = lambda x: x.pufa * 9 / x.tot_cal,
-                             palmitic_pct = lambda x: x.palmitic * 9 /
-                             x.tot_cal,
-                             tot_fat_pct = lambda x: x.tot_fat / x.tot_cal,
-                             f2c = lambda x: x.tot_fat / x.carb))
+                             logsfa2pufa = lambda x: np.log(x.sfa / x.pufa),
+                             palm_pct = lambda x: x.palm * 9 / x.tot_cal,
+                             fat_pct = lambda x: x.fat / x.tot_cal,
+                             cho_pct = lambda x: x.cho / x.tot_cal,
+                             logn62n3 = lambda x: np.log(x.n6 / x.n3),
+                             logf2c = lambda x: np.log(x.fat / x.cho)))
+
+ffq_items_whi_c1 = pd.read_csv("../data/raw/whi/diet/ffq_items_c1.txt",
+                                   sep="\t", skiprows=10)
+ffq_items_whi_c2 = pd.read_csv("../data/raw/whi/diet/ffq_items_c2.txt",
+                                   sep="\t", skiprows=10)
+ffq_items_whi = (pd.concat([ffq_items_whi_c1, ffq_items_whi_c2],
+                               ignore_index=True)
+                 .rename({'SUBJID': 'subjID', 'F60VY': 'visit_year', 
+                          'REDMEAT': 'RM', 'WHLGRNS': 'WG', 'NUTS': 'nuts', 
+                          'FRUITS': 'fruit', 'VEGTABLS': 'veg', 'FISH': 'fish',
+                          'DAIRY': 'dairy', 'FRUVEG': 'FV', 'GRAINS': 'grains'}, axis=1)
+                 .filter(['subjID', 'visit_year', 'FV', 'RM', 'WG', 'nuts',
+                          'grains', 'dairy', 'fish'])
+                 .assign(RM=lambda x: scale(winsorize(x.RM)),
+                         WG=lambda x: scale(winsorize(x.WG)),
+                         nuts=lambda x: scale(winsorize(x.nuts)),
+                         FV=lambda x: scale(winsorize(x.FV)),
+                         fish=lambda x: scale(winsorize(x.fish)),
+                         dairy=lambda x: scale(winsorize(x.dairy)),
+                         grains=lambda x: scale(winsorize(x.grains))))
+
+ffq_hei_whi_c1 = pd.read_csv("../data/raw/whi/diet/ffq_hei_c1.txt", sep="\t",
+                             skiprows=10)
+ffq_hei_whi_c2 = pd.read_csv("../data/raw/whi/diet/ffq_hei_c2.txt", sep="\t",
+                             skiprows=10)
+ffq_hei_whi = (pd.concat([ffq_hei_whi_c1, ffq_hei_whi_c2], ignore_index=True)
+               .rename({'SUBJID': 'subjID', 'VISITYR': 'visit_year', 'HEI2005': 'hei'}, 
+                       axis=1)
+               .filter(['subjID', 'visit_year', 'hei']))
 
 diet_data_whi = ffq_nutrients_whi  # Room to merge in specific food intakes
+diet_data_whi = (pd.merge(diet_data_whi, ffq_items_whi, on=["subjID",
+                                                               "visit_year"]))
+diet_data_whi = pd.merge(diet_data_whi, ffq_hei_whi, on=["subjID",
+                                                         "visit_year"])
+
+myhei_components = ["RM", "WG", "nuts", "FV", "fish", "dairy", "grains"]
+diet_data_whi.loc[:, myhei_components] = (
+    diet_data_whi.loc[:, myhei_components].apply(lambda x: x /
+                                               diet_data_whi.tot_cal))
+diet_data_whi = diet_data_whi.assign(myhei=lambda x: 3 * x.FV + x.fish + 2 * x.WG - x.grains + x.dairy + x.nuts - x.RM)
+
+quant_diet_cols = ffq_nutrients_whi.columns
+quant_diet_cols = diet_data_whi.columns[~diet_data_whi.columns.isin(["subjID",
+                                                                     "visit_year"])]
+diet_data_whi.loc[:, quant_diet_cols] = (
+    diet_data_whi.loc[:, quant_diet_cols].apply(winsorize))
 
 # Merge and save
 
@@ -238,61 +296,148 @@ pc_df = (pd.merge(sample_ids, sample_info, left_on='SampleID', right_on='SAMPLE_
 # Construct outcome feature and prepare plink-friendly dataset
 def rank_INT(values):
     # Computes rank-based inverse normal transformation of a Pandas series
+    # while preserving missing values
     c = 3.0 / 8
-    ranks = stats.rankdata(values)
+    ranks = values.dropna().rank()
     product_INT = stats.norm.ppf((ranks - c) / (len(ranks) - 2*c + 1))
-    return product_INT
-
-def winsorize(values, SDs_from_mean=4):
-    # Winsorize values based on SDs from mean (rather than percentiles)
-    sd = np.std(values)
-    values[values < values.mean() - 4 * sd] = values.mean() - 4 * sd
-    values[values > values.mean() + 4 * sd] = values.mean() + 4 * sd
+    values[~values.isna()] = product_INT
     return values
 
-gwas_variables = ['subjID', 'ldl', 'sfa_pct', 'pufa_pct', 'f2c', 'tot_fat_pct',
-                  'carb', 'age', 'bmi', 'tg', 'glu', 'race', 'dm_trial', 
-                  'PC1', 'PC2', 'PC3', 'PC4', 'PC5']
-phenotypes = ['sfa_ldl', 'fat_ldl', 'f2c_ldl', 
-              'sfa_bmi', 'f2c_bmi', 'f2c_tg', 'f2c_glu']
-gwas_phenos = (whi_metadata
-               .query('lipid_med == False & dm_trial == False')
-               .filter(gwas_features + ['sex'])
-               .dropna()
+def scale(arr):
+    return (arr - np.nanmean(arr)) / np.nanstd(arr)
+
+
+whi_metadata_medsAdj = (whi_metadata
+                        .assign(ldl = lambda x: np.where(x.lipid_med, x.ldl /
+                                                         0.75, x.ldl),
+                                glu = lambda x: np.where(x.dm_med, x.glu /
+                                                         0.75, x.glu),
+                                sbp = lambda x: np.where(x.sbp, x.sbp  + 15,
+                                                         x.sbp))
+                        .copy())
+
+#diet_vars = ['sfa', 'pufa', 'fat', 'f2c', 'palm']
+#risk_factors = ["ldl", "tg", "glu", "sbp"]
+#diet_vars = ["sfa", "f2c"]
+#risk_factors = ["sbp", "bmi"]
+
+diet_vars = ['sfa', 'pufa', 'fat', 'logf2c', 'palm', 'n3',
+             'logsfa2pufa', 'logn62n3', 'myhei']
+risk_factors = ["chol", "ldl", "hdl", "tg", "glu", "sbp", "bmi"]
+#risk_factors.extend(["delta_" + rf for rf in risk_factors])
+
+deltas = (whi_metadata_medsAdj
+          .query('subjID in @pc_df.subjID')
+          .filter(['subjID', 'visit_year'] + diet_vars + risk_factors)
+          #.dropna(subset=diet_vars + risk_factors)
+          .groupby('subjID')
+          .filter(lambda x: x.shape[0] > 1)
+          .sort_values('visit_year')
+          .groupby('subjID')
+          #.agg(lambda x: x.dropna().iloc[[0, -1]].diff().iloc[1] if x.count() >
+          #     1 else np.nan)
+          .agg(lambda x: x.iloc[-1] - x.iloc[0])
+          .reset_index()
+          .drop('visit_year', axis=1)
+          .rename({var: "delta_" + var for var in diet_vars + risk_factors},
+                  axis=1))
+
+gwas_covars = ['dm_trial', 'sex', 'race', 'age',
+               'PC1', 'PC2', 'PC3', 'PC4', 'PC5']
+#gwas_covars.extend(diet_vars + risk_factors)
+
+#delta_dv_rf_combos = [["delta_" + dv, "delta_" + rf] for dv, rf in dv_rf_combos]
+#delta_dv_rf_combo_names = [dv + "_" + rf for dv, rf in delta_dv_rf_combos]
+
+gwas_phenos = (whi_metadata_medsAdj
+               .query('dm_trial == False')
+               .query('visit_year == 0')
+               .filter(['subjID'] + gwas_covars + diet_vars + risk_factors)
+               #.dropna()
+               .drop_duplicates(subset=["subjID"])
+               .merge(deltas, on="subjID", how="left")
                .merge(pc_df, on="subjID")
                .assign(FID = lambda x: x.SampleID, IID = lambda x: x.SampleID)
-               .assign(sfa_ldl = lambda x: scale(x.sfa_pct) * scale(x.ldl),
-                       fat_ldl = lambda x: scale(x.tot_fat_pct) * scale(x.ldl),
-                       f2c_ldl = lambda x: scale(x.f2c) * scale(x.ldl),
-                       sfa_bmi = lambda x: scale(x.sfa_pct) * scale(x.bmi),
-                       f2c_bmi = lambda x: scale(x.f2c) * scale(x.bmi),
-                       f2c_tg = lambda x: scale(x.f2c) * scale(x.tg),
-                       f2c_glu = lambda x: scale(x.f2c) * scale(x.glu))
-               .filter(['FID', 'IID', 'sex'] + phenotypes + gwas_features))
-gwas_phenos_WIN = (gwas_phenos
-                   .filter(phenotypes)
-                   .apply(winsorize)
-                   .rename({p: p + "_WIN" for p in phenotypes}, axis=1))
-gwas_phenos_INT = (gwas_phenos
-                   .filter(phenotypes)
-                   .apply(rank_INT)
-                   .rename({p: p + "_INT" for p in phenotypes}, axis=1))
-gwas_phenos = pd.concat([gwas_phenos, gwas_phenos_WIN, gwas_phenos_INT],
-                        axis=1) 
-               
-gwas_phenos.query('race == "white"').to_csv(
-    "../data/processed/whi/whi_white_gwas_phenos.txt", sep=" ", index=False)
-gwas_phenos.query('race == "black"').to_csv(
-    "../data/processed/whi/whi_black_gwas_phenos.txt", sep=" ", index=False)
-gwas_phenos.query('race == "hispanic"').to_csv(
-    "../data/processed/whi/whi_hispanic_gwas_phenos.txt", sep=" ", index=False)
+               .filter(['FID', 'IID', 'sex'] + diet_vars + risk_factors + 
+                       list(deltas.columns) + 
+                       [v for v in gwas_covars if v != "sex"]))
 
-# List of WHI dietary modification trial partifcipants
-dm_phenos = (whi_metadata
-             .query('dm_trial == True')
-             .merge(pc_df, on="subjID")
-             .assign(FID = lambda x: x.SampleID,
-                     IID = lambda x: x.SampleID)
-             .filter(['FID', 'IID'])
-             .drop_duplicates())
-dm_phenos.to_csv("../data/processed/whi_DM_ids.txt", sep=" ", index=False)
+diet_vars = diet_vars + ["delta_" + dv for dv in diet_vars]
+risk_factors = risk_factors + ["delta_" + rf for rf in risk_factors]
+dv_rf_combos = list(itertools.product(diet_vars, risk_factors))
+dv_rf_combo_names = [dv + "_" + rf for dv, rf in dv_rf_combos]
+for dv, rf in dv_rf_combos:  # Calculate scaled products for each diet/RF combo
+    #gwas_phenos[dv + "_" + rf] = stats.mstats.winsorize(
+    #    scale(gwas_phenos[dv]) * scale(gwas_phenos[rf]), limits=[0.01, 0.01])
+    gwas_phenos[dv + "_" + rf] = scale(gwas_phenos[dv]) * scale(gwas_phenos[rf])
+
+final_phenos = dv_rf_combo_names + diet_vars + risk_factors
+gwas_phenos_INT = (gwas_phenos  # Inverse-normal transforms of phenotypes
+                   .filter(final_phenos)
+                   .apply(rank_INT)
+                   .rename({p: p + "_INT" for p in final_phenos}, axis=1))
+gwas_phenos = pd.concat([gwas_phenos, gwas_phenos_INT], axis=1) 
+
+
+#gwas_covars = ['subjID', 'sex', 'age', 'race', 
+#               'dm_trial', 'visit_year',
+#               'PC1', 'PC2', 'PC3', 'PC4', 'PC5']
+#input_phenos = ['sfa_pct', 'pufa_pct', 'fat_pct', 'cho', 'f2c', 'sbp',
+#                'ldl']
+#phenotypes = ['dsfa_dsbp', 'dsfa_dldl']
+#
+#deltas = (whi_metadata
+#          .filter(['subjID', 'visit_year'] + input_phenos)
+#          .dropna(subset=['sfa_pct', 'sbp'])
+#          .groupby('subjID')
+#          .filter(lambda x: x.shape[0] > 1)
+#          .sort_values('visit_year')
+#          .groupby('subjID')
+#          .agg(lambda x: x.iloc[-1] - x.iloc[0])
+#          .reset_index()
+#          .drop('visit_year', axis=1)
+#          .rename({'sfa_pct': 'delta_sfa_pct', 'sbp': 'delta_sbp', 'ldl':
+#                   'delta_ldl'}, axis=1))
+#
+#gwas_phenos = (whi_metadata
+#               .query('(ht_med == False | ht_med.isna()) & dm_trial == False')
+#               .filter(gwas_covars)
+#               .drop_duplicates(subset=['subjID'])
+#               .merge(deltas, on="subjID")
+#               .merge(pc_df, on="subjID")
+#               .assign(dsfa_dsbp = lambda x: scale(x.delta_sfa_pct) *
+#                       scale(x.delta_sbp),
+#                       dsfa_dldl = lambda x: scale(x.delta_sfa_pct) *
+#                       scale(x.delta_ldl))
+#               .assign(FID = lambda x: x.SampleID, IID = lambda x: x.SampleID)
+#               .filter(['FID', 'IID', 'sex'] + phenotypes +
+#                       [v for v in gwas_covars if v != "sex"]))
+#gwas_phenos_WIN = (gwas_phenos
+#                   .filter(phenotypes)
+#                   .apply(stats.mstats.winsorize, limits=[0.01, 0.01])
+#                   .rename({p: p + "_WIN" for p in phenotypes}, axis=1))
+#gwas_phenos_INT = (gwas_phenos
+#                   .filter(phenotypes)
+#                   .apply(rank_INT)
+#                   .rename({p: p + "_INT" for p in phenotypes}, axis=1))
+#gwas_phenos = pd.concat([gwas_phenos, gwas_phenos_WIN, gwas_phenos_INT], axis=1) 
+
+gwas_phenos.query('race == "white"').to_csv(
+    "../data/processed/whi/whi_white_gwas_phenos_long.txt", sep=" ", na_rep="NA", 
+    index=False)
+gwas_phenos.query('race == "black"').to_csv(
+    "../data/processed/whi/whi_black_gwas_phenos_long.txt", sep=" ", na_rep="NA", 
+    index=False)
+gwas_phenos.query('race == "hispanic"').to_csv(
+    "../data/processed/whi/whi_hispanic_gwas_phenos_long.txt", sep=" ", na_rep="NA", 
+    index=False)
+
+## List of WHI dietary modification trial partifcipants
+#dm_phenos = (whi_metadata
+#             .query('dm_trial == True')
+#             .merge(pc_df, on="subjID")
+#             .assign(FID = lambda x: x.SampleID,
+#                     IID = lambda x: x.SampleID)
+#             .filter(['FID', 'IID'])
+#             .drop_duplicates())
+#dm_phenos.to_csv("../data/processed/whi_DM_ids.txt", sep=" ", index=False)

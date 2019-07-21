@@ -43,6 +43,7 @@ SNPANNO=../int/snp_annotations/snp_annot_hg19_nodups.txt
 #for ((i=1; i<=22; i++)); do
 #	gunzip < $whi_c1_as264/AS264chr${i}c.info.gz > tmp_whi_as264_chr$i.info
 #	awk '{if ($7 < 0.3) print $1}' tmp_whi_as264_chr$i.info > $GENODIR/whi_as264_chr${i}_low_qual_snps.txt
+#	awk '{if ($7 < 0.8) print $1}' tmp_whi_as264_chr$i.info > $GENODIR/whi_as264_chr${i}_low_qual_snps_0.8.txt
 #	gunzip < $whi_c1_as264/AS264chr${i}c.dose.c1.gz > tmp_whi_as264_chr${i}_c1.dose
 #	gunzip < $whi_c2_as264/AS264chr${i}c.dose.c2.gz > tmp_whi_as264_chr${i}_c2.dose
 #	cat tmp_whi_as264_chr${i}_c1.dose tmp_whi_as264_chr${i}_c2.dose > tmp_whi_as264_chr$i.dose
@@ -58,6 +59,7 @@ SNPANNO=../int/snp_annotations/snp_annot_hg19_nodups.txt
 #for ((i=1; i<=22; i++)); do
 #	gunzip < $whi_c1_garnet/GARNETchr${i}c.info.gz > tmp_whi_garnet_chr$i.info
 #	awk '{if ($7 < 0.3) print $1}' tmp_whi_garnet_chr$i.info > $GENODIR/whi_garnet_chr${i}_low_qual_snps.txt
+#	awk '{if ($7 < 0.8) print $1}' tmp_whi_garnet_chr$i.info > $GENODIR/whi_garnet_chr${i}_low_qual_snps_0.8.txt
 #	#gunzip < $whi_c1_garnet/GARNETchr${i}c.dose.c1.gz > tmp_whi_garnet_chr${i}_c1.dose
 #	#gunzip < $whi_c2_garnet/GARNETchr${i}c.dose.c2.gz > tmp_whi_garnet_chr${i}_c2.dose
 #	#cat tmp_whi_garnet_chr${i}_c1.dose tmp_whi_garnet_chr${i}_c2.dose > tmp_whi_garnet_chr$i.dose
@@ -73,6 +75,7 @@ SNPANNO=../int/snp_annotations/snp_annot_hg19_nodups.txt
 #for ((i=1; i<=22; i++)); do
 #	gunzip < $whi_c1_gecco_cyto/GECCOchr${i}cyto.info.gz > tmp_whi_gecco_cyto_chr$i.info
 #	awk '{if ($7 < 0.3) print $1}' tmp_whi_gecco_cyto_chr$i.info > $GENODIR/whi_gecco_cyto_chr${i}_low_qual_snps.txt
+#	awk '{if ($7 < 0.8) print $1}' tmp_whi_gecco_cyto_chr$i.info > $GENODIR/whi_gecco_cyto_chr${i}_low_qual_snps_0.8.txt
 #	#gunzip < $whi_c1_gecco_cyto/GECCOchr${i}cyto.dose.c1.gz > tmp_whi_gecco_cyto_chr${i}_c1.dose
 #	#gunzip < $whi_c2_gecco_cyto/GECCOchr${i}cyto.dose.c2.gz > tmp_whi_gecco_cyto_chr${i}_c2.dose
 #	#cat tmp_whi_gecco_cyto_chr${i}_c1.dose tmp_whi_gecco_cyto_chr${i}_c2.dose > tmp_whi_gecco_cyto_chr$i.dose
@@ -88,6 +91,7 @@ SNPANNO=../int/snp_annotations/snp_annot_hg19_nodups.txt
 #for ((i=1; i<=22; i++)); do
 #	gunzip < $whi_c1_gecco_init/GECCOchr${i}init.info.gz > tmp_whi_gecco_init_chr$i.info
 #	awk '{if ($7 < 0.3) print $1}' tmp_whi_gecco_init_chr$i.info > $GENODIR/whi_gecco_init_chr${i}_low_qual_snps.txt
+#	awk '{if ($7 < 0.8) print $1}' tmp_whi_gecco_init_chr$i.info > $GENODIR/whi_gecco_init_chr${i}_low_qual_snps_0.8.txt
 #	#gunzip < $whi_c1_gecco_init/GECCOchr${i}init.dose.c1.gz > tmp_whi_gecco_init_chr${i}_c1.dose
 #	#gunzip < $whi_c2_gecco_init/GECCOchr${i}init.dose.c2.gz > tmp_whi_gecco_init_chr${i}_c2.dose
 #	#cat tmp_whi_gecco_init_chr${i}_c1.dose tmp_whi_gecco_init_chr${i}_c2.dose > tmp_whi_gecco_init_chr$i.dose
@@ -103,6 +107,7 @@ SNPANNO=../int/snp_annotations/snp_annot_hg19_nodups.txt
 #for ((i=1; i<=22; i++)); do
 #	gunzip < $whi_c1_hipfx/HIPFXchr${i}c.info.gz > tmp_whi_hipfx_chr$i.info
 #	awk '{if ($7 < 0.3) print $1}' tmp_whi_hipfx_chr$i.info > $GENODIR/whi_hipfx_chr${i}_low_qual_snps.txt
+#	awk '{if ($7 < 0.8) print $1}' tmp_whi_hipfx_chr$i.info > $GENODIR/whi_hipfx_chr${i}_low_qual_snps_0.8.txt
 #	#gunzip < $whi_c1_hipfx/HIPFXchr${i}c.dose.c1.gz > tmp_whi_hipfx_chr${i}_c1.dose
 #	#gunzip < $whi_c2_hipfx/HIPFXchr${i}c.dose.c2.gz > tmp_whi_hipfx_chr${i}_c2.dose
 #	#cat tmp_whi_hipfx_chr${i}_c1.dose tmp_whi_hipfx_chr${i}_c2.dose > tmp_whi_hipfx_chr$i.dose
@@ -118,6 +123,7 @@ SNPANNO=../int/snp_annotations/snp_annot_hg19_nodups.txt
 #for ((i=1; i<=22; i++)); do
 #	gunzip < $whi_c1_whims/WHIMSchr${i}c.info.gz > tmp_whi_whims_chr$i.info
 #	awk '{if ($7 < 0.3) print $1}' tmp_whi_whims_chr$i.info > $GENODIR/whi_whims_chr${i}_low_qual_snps.txt
+#	awk '{if ($7 < 0.8) print $1}' tmp_whi_whims_chr$i.info > $GENODIR/whi_whims_chr${i}_low_qual_snps_0.8.txt
 #	#gunzip < $whi_c1_whims/WHIMSchr${i}c.dose.c1.gz > tmp_whi_whims_chr${i}_c1.dose
 #	#gunzip < $whi_c2_whims/WHIMSchr${i}c.dose.c2.gz > tmp_whi_whims_chr${i}_c2.dose
 #	#cat tmp_whi_whims_chr${i}_c1.dose tmp_whi_whims_chr${i}_c2.dose > tmp_whi_whims_chr$i.dose
@@ -133,6 +139,7 @@ SNPANNO=../int/snp_annotations/snp_annot_hg19_nodups.txt
 #for ((i=1; i<=22; i++)); do
 #	gunzip < $whi_c1_share_aa/SHAREchr${i}aa.info.gz > tmp_whi_share_aa_chr$i.info
 #	awk '{if ($7 < 0.3) print $1}' tmp_whi_share_aa_chr$i.info > $GENODIR/whi_share_aa_chr${i}_low_qual_snps.txt
+#	awk '{if ($7 < 0.8) print $1}' tmp_whi_share_aa_chr$i.info > $GENODIR/whi_share_aa_chr${i}_low_qual_snps_0.8.txt
 #	#gunzip < $whi_c1_share_aa/SHAREchr${i}aa.dose.c1.gz > tmp_whi_share_aa_chr${i}_c1.dose
 #	#gunzip < $whi_c2_share_aa/SHAREchr${i}aa.dose.c2.gz > tmp_whi_share_aa_chr${i}_c2.dose
 #	#cat tmp_whi_share_aa_chr${i}_c1.dose tmp_whi_share_aa_chr${i}_c2.dose > tmp_whi_share_aa_chr$i.dose
@@ -148,6 +155,7 @@ SNPANNO=../int/snp_annotations/snp_annot_hg19_nodups.txt
 #for ((i=1; i<=22; i++)); do
 #	gunzip < $whi_c1_share_ha/SHAREchr${i}ha.info.gz > tmp_whi_share_ha_chr$i.info
 #	awk '{if ($7 < 0.3) print $1}' tmp_whi_share_ha_chr$i.info > $GENODIR/whi_share_ha_chr${i}_low_qual_snps.txt
+#	awk '{if ($7 < 0.8) print $1}' tmp_whi_share_ha_chr$i.info > $GENODIR/whi_share_ha_chr${i}_low_qual_snps_0.8.txt
 #	#gunzip < $whi_c1_share_ha/SHAREchr${i}ha.dose.c1.gz > tmp_whi_share_ha_chr${i}_c1.dose
 #	#gunzip < $whi_c2_share_ha/SHAREchr${i}ha.dose.c2.gz > tmp_whi_share_ha_chr${i}_c2.dose
 #	#cat tmp_whi_share_ha_chr${i}_c1.dose tmp_whi_share_ha_chr${i}_c2.dose > tmp_whi_share_ha_chr$i.dose
