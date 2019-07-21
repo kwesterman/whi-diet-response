@@ -4,6 +4,7 @@ import pandas as pd
 from scipy import stats
 from sas7bdat import SAS7BDAT
 from sklearn.preprocessing import scale
+import statsmodels.formula.api as smf
 
 
 # Phenotypes
@@ -62,42 +63,60 @@ def rank_INT(values):
     product_INT = stats.norm.ppf((ranks - c) / (len(ranks) - 2*c + 1))
     return product_INT
 
-def winsorize(values, SDs_from_mean=4):
-    # Winsorize values based on SDs from mean (rather than percentiles)
-    sd = np.std(values)
-    values[values < values.mean() - 4 * sd] = values.mean() - 4 * sd
-    values[values > values.mean() + 4 * sd] = values.mean() + 4 * sd
-    return values
-
 gwas_variables = ['subjID', 'ldl', 'sfa_pct', 'pufa_pct', 'tot_fat_pct', 'carb',
-                  'f2c', 'age', 'bmi', 'tg', 'glu', 'PC1']
-phenotypes = ['sfa_ldl', 'fat_ldl', 'f2c_ldl', 
-              'sfa_bmi', 'f2c_bmi', 'f2c_tg', 'f2c_glu']
+                  'palmitic_pct', 'f2c', 'age', 'bmi', 'tg', 'glu', 'sbp',
+                  'ldl_resid', 'sfa_pct_resid', 'PC1']
+phenotypes = ['sfa_ldl', 'fat_ldl', 'f2c_ldl', 'palm_ldl', 
+              'sfa_ldlR', 'sfaR_ldl', 'sfaR_ldlR',
+              'sfa_bmi', 'f2c_bmi', 'sfa_sbp', 'f2c_sbp', 'f2c_tg', 'f2c_glu']
 
-gwas_phenos = (bprhs_metadata
+bprhs_metadata_nomeds = bprhs_metadata.query('lipid_med == False').copy()
+bprhs_metadata_nomeds["ldl_resid"] = smf.ols('ldl ~ age + sex + bmi', 
+                                             data=bprhs_metadata_nomeds).fit().resid
+bprhs_metadata_nomeds["sfa_pct_resid"] = smf.ols('sfa_pct ~ pufa_pct', 
+                                                 data=bprhs_metadata_nomeds).fit().resid
+
+gwas_phenos = (bprhs_metadata_nomeds
                .query('lipid_med == False')
-               .filter(gwas_features + ['sex'])
+               .filter(gwas_variables + ['sex'])
                .dropna()
                .merge(pc_df, on="subjID") 
                .assign(FID = lambda x: x.nelid_b, IID = lambda x: x.nelid_b) 
                .assign(sfa_ldl = lambda x: scale(x.sfa_pct) * scale(x.ldl),
+                       sfa_ldlR = lambda x: scale(x.sfa_pct) *
+                       scale(x.ldl_resid),
+                       sfaR_ldl = lambda x: scale(x.sfa_pct_resid) *
+                       scale(x.ldl),
+                       sfaR_ldlR = lambda x: scale(x.sfa_pct_resid) *
+                       scale(x.ldl_resid),
                        fat_ldl = lambda x: scale(x.tot_fat_pct) * scale(x.ldl),
                        f2c_ldl = lambda x: scale(x.f2c) * scale(x.ldl),
+                       palm_ldl = lambda x: scale(x.palmitic_pct) * 
+                       scale(x.ldl),
                        sfa_bmi = lambda x: scale(x.sfa_pct) * scale(x.bmi),
                        f2c_bmi = lambda x: scale(x.f2c) * scale(x.bmi),
                        f2c_tg = lambda x: scale(x.f2c) * scale(x.tg),
-                       f2c_glu = lambda x: scale(x.f2c) * scale(x.glu))
+                       f2c_glu = lambda x: scale(x.f2c) * scale(x.glu),
+                       sfa_sbp = lambda x: scale(x.sfa_pct) * scale(x.sbp),
+                       f2c_sbp = lambda x: scale(x.f2c) * scale(x.sbp))
                .filter(['FID', 'IID', 'sex'] + phenotypes + gwas_variables))
 gwas_phenos_WIN = (gwas_phenos
                    .filter(phenotypes)
-                   .apply(winsorize)
+                   .apply(stats.mstats.winsorize, limits=[0.01, 0.01])
                    .rename({p: p + "_WIN" for p in phenotypes}, axis=1))
 gwas_phenos_INT = (gwas_phenos
                    .filter(phenotypes)
                    .apply(rank_INT)
                    .rename({p: p + "_INT" for p in phenotypes}, axis=1))
-gwas_phenos = pd.concat([gwas_phenos, gwas_phenos_WIN, gwas_phenos_INT],
-                        axis=1) 
+gwas_phenos_BIN = (gwas_phenos_WIN
+                   .apply(lambda x: np.where(
+                       x < x.quantile(0.25), 0,
+                       np.where(x > x.quantile(0.75), 1, np.nan)))
+                       #~x.between(*x.quantile([0.25, 0.75]))))
+                   .rename({(p + "_WIN"): p + "_BIN" for p in phenotypes}, 
+                           axis=1))
+gwas_phenos = pd.concat([gwas_phenos, gwas_phenos_WIN, gwas_phenos_INT,
+                         gwas_phenos_BIN], axis=1) 
                
 gwas_phenos.to_csv("../data/processed/bprhs/bprhs_gwas_phenos.txt", sep=" ", 
-                   index=False)
+                   na_rep="NA", index=False)

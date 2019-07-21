@@ -1,0 +1,482 @@
+---
+title: Genetic scores for diet response prediction
+output: html_document
+---
+
+```{r setup, include=F}
+knitr::opts_chunk$set(echo=F, cache.path="../cache/test/",
+                      fig.path="../output/figures/test/")
+suppressMessages(silent <- lapply(
+  c("knitr", "tidyverse", "cowplot", "doParallel", "kableExtra",
+    "glmnet", "broom"), library, character.only=T))
+```
+
+```{r helpers}
+INT <- function(x) qnorm((rank(x, na.last="keep") - 0.5) / sum(!is.na(x)))
+
+winsorize <- function(x, thresh) {
+  bounds <- quantile(x, c(thresh, 1 - thresh), na.rm=T)
+  case_when(x < bounds[1] ~ bounds[1],
+            x > bounds[2] ~ bounds[2],
+            TRUE ~ x)
+} 
+
+make_qqplot <- function(p_vec, plotTitle="Title") {
+  p_vec <- p_vec[!is.na(p_vec)]
+  qqplot(-log10(1:length(p_vec) / length(p_vec)), -log10(p_vec), pch=".", 
+         main=plotTitle, xlab="Expected (-logP)", ylab="Observed (-logP)")
+  abline(0, 1, col="red")
+}
+```
+
+```{r load-metadata, message=F}
+raw_phenos_whi <- read_csv("../data/processed/metadata_whi.csv", 
+                           col_types=cols(sex="c", lipid_med="l", dm_trial="l",
+                                          dm_intervention="l"))
+
+whi_sample_to_subject <- read_tsv("../data/raw/whi/sample_info.txt", skip=15) %>%
+  rename(sampleID=SampleID, subjID=SubjectID) %>%
+  select(sampleID, subjID)
+```
+
+```{r clean-metadata, message=F}
+clean_phenos_whi <- raw_phenos_whi %>%
+  mutate(ht_med=as.logical(ht_med),
+         ldl=ifelse(lipid_med, ldl / 0.75, ldl),
+         glu=ifelse(dm_med, glu / 0.75, glu),
+         sbp=ifelse(ht_med, sbp + 15, sbp),
+         logf2c=log((sfa + mufa + pufa) / carb),
+         logf2c=winsorize(logf2c, 0.005))
+
+process_metadata <- function(clean_phenos, dv, rf, 
+                             races=c("white", "black", "hispanic", "asian")) {
+  phenos <- clean_phenos %>%
+    filter(!is.na(.data[[dv]]),
+           !is.na(.data[[rf]]),
+           race %in% races)
+  
+  phenos_baseline <- phenos %>%
+    filter(visit_year == 0)
+  
+  phenos_long <- phenos %>%
+    mutate(arm=ifelse(dm_intervention, "intervention", "control")) %>%
+    group_by(subjID, age, race, sex, dm_trial, arm) %>%
+    filter(n() > 1) %>%
+    arrange(visit_year) %>%
+    summarise(baseline_bmi=bmi[1],
+              baseline_rf=.data[[rf]][1],
+              baseline_dv=.data[[dv]][1],
+              delta_bmi=bmi[n()] - bmi[1],
+              delta_rf=.data[[rf]][n()] - .data[[rf]][1],
+              delta_dv=.data[[dv]][n()] - .data[[dv]][1]) %>%
+    ungroup()
+  
+  list(baseline=phenos_baseline, long=phenos_long)
+}
+```
+
+```{r add-genotypes}
+add_genotypes <- function(phenos_list, genotype_path) {
+  whi_genotypes <- readRDS(genotype_path) %>%
+    rename(sampleID=IID) %>%
+    select(-FID, -PAT, -MAT, -SEX, -PHENOTYPE) %>%
+    mutate_all(Hmisc::impute, median)
+  
+  baseline_data <- phenos_list$baseline %>%
+    inner_join(whi_sample_to_subject, by="subjID") %>%
+    inner_join(whi_genotypes, by="sampleID")
+  
+  long_data <- phenos_list$long %>%
+    inner_join(whi_sample_to_subject, by="subjID") %>%
+    inner_join(whi_genotypes, by="sampleID")
+  
+  list(baseline=baseline_data, long=long_data)
+}
+```
+
+```{r specific-experiments, cache=1, warning=F}
+cs_trial_compare <- function(data_list, dv, rf) {
+  cs_data <- filter(data_list$baseline, dm_trial == F)
+  X <- as.matrix(select(cs_data, contains("rs")))
+  y <- INT(scale(cs_data[[dv]]) * scale(log(cs_data[[rf]])))
+  cs_nondm <- foreach(x=iter(X, by="col"), .combine=rbind,
+                      .packages=c("broom")) %dopar%
+    tidy(lm(y ~ x))[2, ]
+  cs_nondm$snp <- colnames(X)
+  
+  trial_data <- filter(data_list$long, 
+                       dm_trial == T, arm == "intervention")
+  X <- as.matrix(select(trial_data, contains("rs")))
+  y <- INT(trial_data$delta_rf)
+  direct_effect_trial <- foreach(x=iter(X, by="col"), .combine=rbind,
+                                 .packages=c("broom")) %dopar%
+    tidy(lm(y ~ x))[2, ]
+  direct_effect_trial$snp <- colnames(X)
+  
+  cor_test <- cor.test(cs_nondm$estimate, direct_effect_trial$estimate,
+                       method="spearman")
+  list(cs_nondm=cs_nondm, direct_effect_trial=direct_effect_trial,
+       cor_test=cor_test, corr=cor_test$estimate)
+}
+
+full_white_test <- function(dv, rf, genopath) {
+  a <- process_metadata(clean_phenos_whi, dv, rf, "white")
+  b <- add_genotypes(a, genopath)
+  cs_trial_compare(b, dv, rf)
+}
+
+rf_to_path <- list(ldl="../data/processed/whi_ldl_suggestive.rds",
+                   chol="../data/processed/whi_ldl_suggestive.rds",
+                   glu="../data/processed/whi_glu_suggestive.rds",
+                   bmi="../data/processed/whi_bmi_genomewide16.rds",
+                   sbp="../data/processed/whi_bp_suggestive.rds")
+
+p_thresh_test <- function(test_res, de_res, p_thresh=0.2) {
+  shared_snps <- intersect(test_res$snp, de_res$snp)
+  cor_test_df <- data.frame(cs=test_res$estimate[match(shared_snps, test_res$snp)],
+                            de=de_res$estimate[match(shared_snps, de_res$snp)])
+  tidy(cor.test(~ cs + de, data=cor_test_df, method="spearman",
+                subset=test_res$p.value < p_thresh))$estimate
+}
+```
+
+The "sanity check/is there any hope" strategy:
+
+* Restrict to European ancestry only
+* For each risk factor tested, subset to only genome-wide suggestive (p<1e-5) SNPs from GWAS for that risk factor
+* Test those SNPs for association with 1) our "interaction product method" (diet variable = SFA or fat:carb ratio), and 2) the change in that risk factor over the first three years of the WHI diet trial
+* Test the Spearman correlation between SNP coefficient estimates for the two regression sets above. A negative correlation is "good", in the sense that predicted responders (positive product values) have a greater *decrease* in risk factor during the trial.
+
+```{r show-corrs, warning=F, eval=F}
+# mygrid$spearman_corr <- map_dbl(mycorrs, "estimate")
+mygrid$spearman_corr <- map_dbl(mycorrs, "corr")
+ggplot(mygrid, aes(x=dv, y=rf, fill=spearman_corr)) +
+  geom_tile() +
+  scale_fill_gradient2() +
+  labs(subtitle="Spearman correlation of all betas")
+
+p_thresh_test <- function(test_res, de_res, p_thresh=0.2) {
+  shared_snps <- intersect(test_res$snp, de_res$snp)
+  cor_test_df <- data.frame(cs=test_res$estimate[match(shared_snps, test_res$snp)],
+                            de=de_res$estimate[match(shared_snps, de_res$snp)])
+  tidy(cor.test(~ cs + de, data=cor_test_df, method="spearman",
+                subset=test_res$p.value < p_thresh))$estimate
+}
+
+mygrid$spearman_corr_with_thresh <- map_dbl(
+  mycorrs, function(x) p_thresh_test(x$cs_nondm, x$direct_effect_trial))
+ggplot(mygrid, aes(x=dv, y=rf, fill=spearman_corr_with_thresh)) +
+  geom_tile() +
+  scale_fill_gradient2() +
+  labs(subtitle="Spearman correlation of betas for SNPs w/ C-S p<0.2")
+```
+
+## This time, testing SFA -> SBP
+
+### What if this is done in different ancestries (non-European)?
+
+```{r ancestries, cache=1, warning=F}
+chosen_dv <- "sfa"
+chosen_rf <- "sbp"
+
+white_only <- process_metadata(
+  clean_phenos_whi, chosen_dv, chosen_rf, "white") %>%
+  add_genotypes(rf_to_path[[chosen_rf]])
+black_only <- process_metadata(
+  clean_phenos_whi, chosen_dv, chosen_rf, "black") %>%
+  add_genotypes(rf_to_path[[chosen_rf]])
+both_ancestries <- process_metadata(
+  clean_phenos_whi, chosen_dv, chosen_rf, c("white", "black")) %>% 
+  add_genotypes(rf_to_path[[chosen_rf]])
+
+cl <- makePSOCKcluster(8)
+registerDoParallel(cl)
+
+white_corr <- cs_trial_compare(white_only, "sfa", "sbp")
+black_corr <- cs_trial_compare(black_only, "sfa", "sbp")
+both_corr <- cs_trial_compare(both_ancestries, "sfa", "sbp")
+
+stopCluster(cl)
+```
+
+```{r show-ancestries, warning=F}
+ancestry_res <- data.frame(
+  Race=c("White", "Black", "Both"),
+  Spearman_corr=c(p_thresh_test(white_corr$cs_nondm, white_corr$direct_effect_trial),
+                  p_thresh_test(black_corr$cs_nondm, black_corr$direct_effect_trial),
+                  p_thresh_test(both_corr$cs_nondm, both_corr$direct_effect_trial)))
+
+kable(ancestry_res) %>% kable_styling()
+```
+
+It seems that this strong negative correlation is preserved only in whites (though sample size may play a role here).
+
+### Negative control: what about using a non-matching set of SNPs?
+
+```{r test-random-snps, cache=1, warning=F}
+white_only_with_glu <- process_metadata(
+  clean_phenos_whi, chosen_dv, chosen_rf, "white") %>% 
+  add_genotypes(rf_to_path[["glu"]])
+white_only_with_bmi <- process_metadata(
+  clean_phenos_whi, chosen_dv, chosen_rf, "white") %>% 
+  add_genotypes(rf_to_path[["bmi"]])
+
+cl <- makePSOCKcluster(8)
+registerDoParallel(cl)
+mismatch_res <- cs_trial_compare(white_only_with_glu, chosen_dv, chosen_rf)
+mismatch_res2 <- cs_trial_compare(white_only_with_bmi, chosen_dv, chosen_rf)
+stopCluster(cl)
+```
+
+```{r show-test-random-snps, warning=F}
+# print("SFA -> SBP beta correlation using Glu-related SNPs:")
+# p_thresh_test(mismatch_res$cs_nondm, mismatch_res$direct_effect_trial)
+# print("SFA -> SBP beta correlation using BMI-related SNPs:")
+# p_thresh_test(mismatch_res2$cs_nondm, mismatch_res2$direct_effect_trial)
+
+random_snps_res_df <- data.frame(
+  `SNP set`=c("Glucose", "BMI"),
+  `Spearman_corr`=c(p_thresh_test(mismatch_res$cs_nondm, mismatch_res$direct_effect_trial),
+                    p_thresh_test(mismatch_res2$cs_nondm, mismatch_res2$direct_effect_trial))
+)
+
+kable(random_snps_res_df) %>% kable_styling()
+```
+
+### Negative "control": use SBP main effect estimates instead of interaction product
+
+```{r test-main-effect, cache=1}
+cl <- makePSOCKcluster(8)
+registerDoParallel(cl)
+
+cs_data <- filter(white_only$baseline, dm_trial == F)
+X <- as.matrix(select(cs_data, contains("rs")))
+y <- INT(log(cs_data[[chosen_rf]]))
+cs_nondm_main <- foreach(x=iter(X, by="col"), .combine=rbind,
+                    .packages=c("broom")) %dopar%
+  tidy(lm(y ~ x))[2, ]
+cs_nondm_main$snp <- colnames(X)
+
+stopCluster(cl)
+```
+
+```{r show-test-main-effect, warning=F}
+# tidy(cor.test(cs_nondm_main$estimate, 
+#               white_corr$direct_effect_trial$estimate,
+#               method="spearman"))
+p_thresh_test(cs_nondm_main, white_corr$direct_effect_trial)
+```
+
+### Prediction algorithm performance (CS -> trial)
+
+```{r prediction, cache=1}
+cs_data <- filter(white_only$baseline, dm_trial == F)
+use_snps <- white_corr$cs_nondm$snp[white_corr$cs_nondm$p.value < 0.01]
+y <- INT(scale(cs_data[[chosen_dv]]) * scale(log(cs_data[[chosen_rf]])))
+glm_data <- select(cs_data, use_snps)
+glm_fit <- glm(y ~ ., data=glm_data)
+# X <- as.matrix(select(cs_data, contains("rs")))
+# y <- INT(scale(cs_data[[chosen_dv]]) * scale(log(cs_data[[chosen_rf]])))
+# use_snps <- colnames(X) ######[ldl_cs_nondm$p.value < 0.1]
+# cl <- makePSOCKcluster(4)
+# registerDoParallel(cl)
+# glm_fit <- cv.glmnet(X[, use_snps], y, alpha=0.5, nfolds=3, parallel=T)
+# stopCluster(cl)
+# print(sum(coef(glm_fit, s="lambda.min") != 0))
+
+trial_data <- filter(white_only$long, dm_trial == T)
+y_pred <- as.vector(predict(glm_fit, trial_data))
+tidy(lm(delta_rf ~ y_pred, data=trial_data, 
+        subset=trial_data$arm == "intervention"))
+
+# trial_data <- filter(white_only$long, dm_trial == T)
+# X_test <- as.matrix(select(trial_data, contains("rs")))
+# y_pred <- as.vector(predict(glm_fit, X_test[, use_snps], s="lambda.min"))
+# tidy(lm(delta_rf ~ y_pred, data=trial_data, 
+#         subset=trial_data$arm == "intervention"))
+```
+
+```{r prediction-alpha-zero, cache=1}
+cs_data <- filter(white_only$baseline, dm_trial == F)
+X <- as.matrix(select(cs_data, contains("rs")))
+y <- INT(scale(cs_data[[chosen_dv]]) * scale(log(cs_data[[chosen_rf]])))
+use_snps <- colnames(X) ######[ldl_cs_nondm$p.value < 0.1]
+cl <- makePSOCKcluster(4)
+registerDoParallel(cl)
+glm_fit <- cv.glmnet(X[, use_snps], y, alpha=0, nfolds=3, parallel=T)
+stopCluster(cl)
+print(sum(coef(glm_fit, s="lambda.min") != 0))
+
+trial_data <- filter(white_only$long, dm_trial == T)
+X_test <- as.matrix(select(trial_data, contains("rs")))
+y_pred <- as.vector(predict(glm_fit, X_test[, use_snps], s="lambda.min"))
+tidy(lm(delta_rf ~ y_pred, data=trial_data,
+        subset=trial_data$arm == "intervention"))
+```
+
+### Refining: do any alternative statistical approaches improve the beta correlation?
+
+```{r variations, cache=1}
+cl <- makePSOCKcluster(4)
+registerDoParallel(cl)
+
+cs_data <- filter(white_only$baseline, dm_trial == F)
+X <- as.matrix(select(cs_data, contains("rs")))
+
+y <- scale(cs_data[[chosen_dv]]) * scale(log(cs_data[[chosen_rf]]))
+cs_nondm_noINT <- foreach(x=iter(X, by="col"), .combine=rbind,
+                          .packages=c("broom")) %dopar%
+  tidy(lm(y ~ x))[2, ]
+cs_nondm_noINT$snp <- colnames(X)
+
+y <- log(cs_data[[chosen_rf]])
+cs_nondm_interaction <- foreach(x=iter(X, by="col"), .combine=rbind,
+                                .packages=c("broom")) %dopar%
+  tidy(lm(y ~ x * cs_data[[chosen_dv]], data=cs_data))[4, ]
+cs_nondm_interaction$snp <- colnames(X)
+
+stopCluster(cl)
+```
+
+```{r show-variations, warning=F}
+# cor.test(cs_nondm_noINT$estimate, white_corr$direct_effect_trial$estimate, method="spearman")
+# cor.test(cs_nondm_interaction$estimate, white_corr$direct_effect_trial$estimate, method="spearman")
+variations_res_df <- data.frame(
+  Variant=c("No inverse-normal transform of phenotype",
+            "Interaction rather than 'product method'"),
+  p=c(p_thresh_test(cs_nondm_noINT, white_corr$direct_effect_trial),
+      p_thresh_test(cs_nondm_interaction, white_corr$direct_effect_trial)))
+
+kable(variations_res_df) %>% kable_styling()
+```
+
+### Delta method
+
+Right now, with logF2C -> SBP
+
+```{r delta-method-comparison, cache=1}
+cl <- makePSOCKcluster(8)
+registerDoParallel(cl)
+
+f2c_sbp_data <- process_metadata(
+  clean_phenos_whi, "logf2c", "sbp", "white") %>%
+  add_genotypes(rf_to_path$sbp)
+long_nondm_data <- filter(f2c_sbp_data$long, dm_trial == F)
+X <- as.matrix(select(long_nondm_data, contains("rs")))
+y <- INT(scale(long_nondm_data$delta_dv) * scale(long_nondm_data$delta_rf))
+long_nondm <- foreach(x=iter(X, by="col"), .combine=rbind,
+                    .packages=c("broom")) %dopar%
+  tidy(lm(y ~ x))[2, ]
+long_nondm$snp <- colnames(X)
+
+stopCluster(cl)
+```
+
+```{r show-delta_method_comparison}
+delta_method_corr <- p_thresh_test(long_nondm, white_corr$direct_effect_trial)
+
+paste("Spearman corr. using delta method (change in DV x change in RF):", 
+      delta_method_corr)
+```
+
+### Other cohorts -- also correlated?
+
+```{r fhs-comparison, cache=1, message=F, eval=F}
+fhs_meta <- read_csv("../data/processed/metadata_fhs.csv") %>%
+  mutate(sbp=ifelse(ht_med, sbp + 15, sbp)) %>%
+  filter(!is.na(sfa), !is.na(sbp))
+fhs_genos <- readRDS("../data/processed/fhs_ldl_suggestive.rds") %>%
+  rename(subjID=IID) %>%
+  select(-FID, -PAT, -MAT, -SEX, -PHENOTYPE) %>%
+  mutate_all(Hmisc::impute, median)
+fhs_data <- inner_join(fhs_meta, fhs_genos, by="subjID")
+
+cl <- makePSOCKcluster(8)
+registerDoParallel(cl)
+
+fhs_X <- as.matrix(select(fhs_data, contains("rs")))
+fhs_y <- INT(scale(fhs_data[[chosen_dv]]) * scale(log(fhs_data[[chosen_rf]])))
+cs_fhs <- foreach(x=iter(fhs_X, by="col"), .combine=rbind,
+                    .packages=c("broom")) %dopar%
+  tidy(lm(fhs_y ~ x))[2, ]
+cs_fhs$snp <- colnames(fhs_X)
+
+fhs_f_data <- filter(fhs_data, sex == "F")
+fhs_f_X <- as.matrix(select(fhs_f_data, contains("rs")))
+fhs_f_y <- INT(scale(fhs_f_data[[chosen_dv]]) * scale(log(fhs_f_data[[chosen_rf]])))
+cs_fhs_f <- foreach(x=iter(fhs_f_X, by="col"), .combine=rbind,
+                    .packages=c("broom")) %dopar%
+  tidy(lm(fhs_f_y ~ x))[2, ]
+cs_fhs_f$snp <- colnames(fhs_f_X)
+
+stopCluster(cl)
+```
+
+```{r show-fhs-comparison, warning=F, eval=F}
+# whi_fhs_shared_snps <- intersect(white_corr$direct_effect_trial$snp,
+#                                  cs_fhs$snp)
+# whi_de_res <- white_corr$direct_effect_trial
+# print("FHS-CS -> WHI DM effect correlation")
+# tidy(cor.test(whi_de_res$estimate[match(whi_fhs_shared_snps, whi_de_res$snp)],
+#               cs_fhs$estimate[match(whi_fhs_shared_snps, cs_fhs$snp)],
+#               method="spearman"))
+# print("FHS-CS -> WHI DM effect correlation (females only)")
+# tidy(cor.test(whi_de_res$estimate[match(whi_fhs_shared_snps, whi_de_res$snp)],
+#               cs_fhs_f$estimate[match(whi_fhs_shared_snps, cs_fhs_f$snp)],
+#               method="spearman"))
+print("FHS-CS -> WHI DM effect correlation")
+p_thresh_test(cs_fhs, white_corr$direct_effect_trial)
+print("FHS-CS -> WHI DM effect correlation (females only)")
+p_thresh_test(cs_fhs_f, white_corr$direct_effect_trial)
+```
+
+```{r mesa-comparison, cache=1, message=F, eval=F}
+mesa_meta <- read_csv("../data/processed/metadata_mesa.csv") %>%
+  mutate(ldl=ifelse(statin, ldl / 0.75, ldl)) %>%
+  filter(!is.na(sfa), !is.na(ldl))
+mesa_white_genos <- readRDS("../data/processed/mesa_white_ldl_suggestive.rds") %>%
+  rename(subjID=IID) %>%
+  select(-FID, -PAT, -MAT, -SEX, -PHENOTYPE) %>%
+  mutate_all(Hmisc::impute, median)
+mesa_white_data <- inner_join(mesa_meta, mesa_white_genos, by="subjID")
+
+cl <- makePSOCKcluster(8)
+registerDoParallel(cl)
+
+mesa_white_X <- as.matrix(select(mesa_white_data, contains("rs")))
+mesa_white_y <- INT(scale(mesa_white_data[[chosen_dv]]) * 
+                      scale(log(mesa_white_data[[chosen_rf]])))
+cs_mesa_white <- foreach(x=iter(mesa_white_X, by="col"), .combine=rbind,
+                    .packages=c("broom")) %dopar%
+  tidy(lm(mesa_white_y ~ x))[2, ]
+cs_mesa_white$snp <- colnames(mesa_white_X)
+
+mesa_white_f_data <- filter(mesa_white_data, sex == "F")
+mesa_white_f_X <- as.matrix(select(mesa_white_f_data, contains("rs")))
+mesa_white_f_y <- INT(scale(mesa_white_f_data[[chosen_dv]]) * 
+                      scale(log(mesa_white_f_data[[chosen_rf]])))
+cs_mesa_white_f <- foreach(x=iter(mesa_white_f_X, by="col"), .combine=rbind,
+                    .packages=c("broom")) %dopar%
+  tidy(lm(mesa_white_f_y ~ x))[2, ]
+cs_mesa_white_f$snp <- colnames(mesa_white_f_X)
+
+stopCluster(cl)
+```
+
+```{r show-mesa-comparison, warning=F, eval=F}
+# whi_mesa_white_shared_snps <- intersect(white_corr$direct_effect_trial$snp,
+#                                         cs_mesa_white$snp)
+# whi_de_res <- white_corr$direct_effect_trial
+# print("MESA-CS -> WHI DM effect correlation")
+# tidy(cor.test(whi_de_res$estimate[match(whi_mesa_white_shared_snps, whi_de_res$snp)],
+#               cs_mesa_white$estimate[match(whi_mesa_white_shared_snps, cs_mesa_white$snp)],
+#               method="spearman"))
+# print("MESA-CS -> WHI DM effect correlation (females only)")
+# tidy(cor.test(whi_de_res$estimate[match(whi_mesa_white_shared_snps, whi_de_res$snp)],
+#               cs_mesa_white_f$estimate[match(whi_mesa_white_shared_snps, cs_mesa_white_f$snp)],
+#               method="spearman"))
+print("MESA-CS -> WHI DM effect correlation")
+p_thresh_test(cs_mesa_white, white_corr$direct_effect_trial)
+print("MESA-CS -> WHI DM effect correlation (females only")
+p_thresh_test(cs_mesa_white_f, white_corr$direct_effect_trial)
+```

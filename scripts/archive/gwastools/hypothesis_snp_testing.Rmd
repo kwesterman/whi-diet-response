@@ -1,0 +1,808 @@
+---
+title: Hypothesis SNPs -- sanity checks and derivation of literature-based risk scores
+output: pdf_document
+---
+
+```{r setup, include=F}
+knitr::opts_chunk$set(echo=F, cache.path="../cache/hypothesis_snp_testing/",
+                      fig.path="../output/figures/hypothesis_snp_testing/")
+suppressMessages(silent <- lapply(
+  c("knitr", "tidyverse", "GWASTools", "SNPRelate", "kableExtra", "foreach",
+    "broom", "powerGWASinteraction"), 
+  library, character.only=T))
+```
+
+```{r funcs}
+bim_to_SnADF <- function(bfile) {
+  bim_df <- read_tsv(paste0(bfile, ".bim"), 
+                     col_names=c("chromosome", "rsID", "cm", 
+                                 "position", "A1", "A2")) %>%
+    mutate(snpID=1:nrow(.)) %>%
+    mutate_at(vars(chromosome, position), as.integer)
+  SnpAnnotationDataFrame(data.frame(bim_df, stringsAsFactors=F))
+}
+
+fam_to_ScADF <- function(bfile, phenos) {
+  fam_df <- read_delim(paste0(bfile, ".fam"), 
+                       delim=" ", col_names=c("FID", "IID", "father", "mother", 
+                                               "sex", "pheno")) %>%
+    select(IID) %>%
+    left_join(phenos, by=c("IID")) %>%
+    mutate(scanID=IID)
+  ScanAnnotationDataFrame(data.frame(fam_df, stringsAsFactors=F))
+}
+
+make_gds <- function(bfile, gds_name, summary=F) {
+  snpgdsBED2GDS(paste0(bfile, ".bed"),
+                paste0(bfile, ".fam"),
+                paste0(bfile, ".bim"),
+                gds_name,
+                cvt.snpid="int",
+                verbose=F)
+  if (summary) snpgdsSummary(gds_name)
+}
+
+run_test <- function(genoData, outcome, covars, ivar, robust, start, end) {
+  assocRegression(
+    genoData,
+    outcome=outcome,
+    model.type="linear",
+    gene.action="additive",
+    covar=covars,
+    ivar=ivar,
+    robust=robust,
+    snpStart=start, 
+    snpEnd=end,
+    verbose=F)
+}
+
+make_qqplot <- function(p_vec, plotTitle="Title") {
+  p_vec <- p_vec[!is.na(p_vec)]
+  qqplot(-log10(1:length(p_vec) / length(p_vec)), -log10(p_vec), pch=".", 
+         main=plotTitle, xlab="Expected (-logP)", ylab="Observed (-logP)")
+  abline(0, 1, col="red")
+}
+```
+
+```{r cardiogxe, message=F}
+cardio_gxe <- read_tsv("../data/raw/literature/cardio_gxe_catalog.txt", skip=2)
+all_cardioGxE_snps <- unique(unlist(strsplit(cardio_gxe$SNP, split=", | or ")))
+write_lines(all_cardioGxE_snps, "../data/processed/all_CardioGxE_snps.txt")
+
+bmi_terms <- c("delta body weight", "body weight", "weight", "BMI", "delta BMI")
+ldl_terms <- c("LDL", "cholesterol")
+tg_terms <- c("triglyceride", "tg")
+glu_terms <- c("glu")
+sbp_terms <- c("blood pressure")
+
+sfa_terms <- c("SFA", "saturated fat")
+fat_terms <- c("fat, total", "high-fat", "low-fat")
+
+bmi_gxe <- cardio_gxe %>% 
+  filter(`Interaction significance` == "significant interaction",
+         grepl(paste(bmi_terms, collapse="|"), Phenotype)
+         # grepl(paste(fat_terms, collapse="|"), `Environmental factor`)
+         ) %>%
+  select(SNP, Gene, `Risk allele`,
+         `Environmental factor`, `Condition of environmental factor`,
+         Phenotype)
+  # distinct(SNP, .keep_all=T)
+
+ldl_gxe <- cardio_gxe %>% 
+  filter(`Interaction significance` == "significant interaction",
+         grepl(paste(ldl_terms, collapse="|"), Phenotype)
+         # grepl(paste(fat_terms, collapse="|"), `Environmental factor`)
+         ) %>%
+  select(SNP, Gene, `Risk allele`,
+         `Environmental factor`, `Condition of environmental factor`,
+         Phenotype)
+
+tg_gxe <- cardio_gxe %>% 
+  filter(`Interaction significance` == "significant interaction",
+         grepl(paste(tg_terms, collapse="|"), Phenotype)
+         # grepl(paste(fat_terms, collapse="|"), `Environmental factor`)
+         ) %>%
+  select(SNP, Gene, `Risk allele`,
+         `Environmental factor`, `Condition of environmental factor`,
+         Phenotype)
+
+glu_gxe <- cardio_gxe %>% 
+  filter(`Interaction significance` == "significant interaction",
+         grepl(paste(glu_terms, collapse="|"), Phenotype)
+         # grepl(paste(fat_terms, collapse="|"), `Environmental factor`)
+         ) %>%
+  select(SNP, Gene, `Risk allele`,
+         `Environmental factor`, `Condition of environmental factor`,
+         Phenotype)
+
+sbp_gxe <- cardio_gxe %>% 
+  filter(`Interaction significance` == "significant interaction",
+         grepl(paste(sbp_terms, collapse="|"), Phenotype)
+         # grepl(paste(fat_terms, collapse="|"), `Environmental factor`)
+         ) %>%
+  select(SNP, Gene, `Risk allele`,
+         `Environmental factor`, `Condition of environmental factor`,
+         Phenotype)
+
+sfa_gxe <- cardio_gxe %>% 
+  filter(`Interaction significance` == "significant interaction",
+         grepl(paste(sfa_terms, collapse="|"), `Environmental factor`)
+         # grepl(paste(fat_terms, collapse="|"), `Environmental factor`)
+         ) %>%
+  select(SNP, Gene, `Risk allele`,
+         `Environmental factor`, `Condition of environmental factor`,
+         Phenotype)
+```
+
+```{r load-fhs, message=F, warning=F}
+fhs_bfile <- "../data/processed/fhs/fhs_hypothesis"
+fhs_gds_name <- paste0(fhs_bfile, ".gds")
+make_gds(fhs_bfile, fhs_gds_name)
+fhs_gds <- GdsGenotypeReader(openfn.gds(fhs_gds_name, allow.fork=T))
+
+fhs_snpAnnot <- bim_to_SnADF(fhs_bfile)
+fhs_rs_to_id <- with(getAnnotation(fhs_snpAnnot), setNames(snpID, rsID))
+
+fhs_phenos <- read_delim("../data/processed/gen4/fhs_gwas_phenos.txt",
+                         delim=" ") %>%
+  mutate(myvar=sfa > 22,
+         myvar2=ifelse(sfa < 17, 0, ifelse(sfa > 30, 2, NA)),
+         sfa_pct=sfa / tot_cal * 100,
+         mufa_pct = mufa / tot_cal * 100,
+         pufa_pct = pufa / tot_cal * 100,
+         fat2carb = fat / cho,
+         # myvar3=sfa_pct > quantile(sfa_pct, 0.5),
+         logsfa=log(sfa),
+         logsfa_pct=log(sfa_pct))
+# mutate(myhei=-scale(palm) + scale(pufa) + scale(n3))
+fhs_scanAnnot <- fam_to_ScADF(fhs_bfile, fhs_phenos)
+fhs_genoData <- GenotypeData(fhs_gds, snpAnnot=fhs_snpAnnot, 
+                             scanAnnot=fhs_scanAnnot)
+```
+
+```{r load-whi, message=F, warning=F}
+whi_bfile <- "../data/processed/whi/whi_hypothesis"
+whi_gds_name <- paste0(whi_bfile, ".gds")
+make_gds(whi_bfile, whi_gds_name)
+whi_gds <- GdsGenotypeReader(openfn.gds(whi_gds_name, allow.fork=T))
+
+whi_snpAnnot <- bim_to_SnADF(whi_bfile)
+whi_rs_to_id <- with(getAnnotation(whi_snpAnnot), setNames(snpID, rsID))
+
+whi_phenos <- read_delim("../data/processed/gen4/whi_white_gwas_phenos.txt",
+                         delim=" ") %>%
+  mutate(sex="F",
+         sfa_pct=sfa / tot_cal * 100,
+         mufa_pct = mufa / tot_cal * 100,
+         pufa_pct = pufa / tot_cal * 100,
+         fat_pct=fat / tot_cal * 100,
+         fat2carb = fat / cho,
+         sfa_binary = sfa > quantile(sfa, 0.5),
+         sfa_pct_binary = sfa_pct > quantile(sfa_pct, 0.5),
+         sfa_tert = findInterval(sfa, quantile(sfa, c(0.33, 0.66))),
+         sfa_pct_tert = findInterval(sfa_pct, quantile(sfa_pct, c(0.33, 0.66))),
+         sfa_pct_tert_nomid = ifelse(sfa_pct_tert == 1, NA, sfa_pct_tert),
+         logsfa=log(sfa),
+         logsfa_pct=log(sfa_pct),
+         fat_binary = fat > quantile(fat, 0.5),
+         fat_pct_binary = fat_pct > quantile(fat_pct, 0.5),
+         fat_tert = findInterval(fat, quantile(fat, c(0.33, 0.66))),
+         fat_pct_tert = findInterval(fat_pct, quantile(fat_pct, c(0.33, 0.66))),
+         fat_pct_tert_nomid = ifelse(fat_pct_tert == 1, NA, fat_pct_tert),
+         logfat=log(fat),
+         logfat_pct=log(fat_pct),
+         palm_pct = palm / tot_cal * 100,
+         palm_binary = palm > quantile(palm, 0.5))
+# mutate(myhei=-scale(palm) + scale(pufa) + scale(n3))
+whi_scanAnnot <- fam_to_ScADF(whi_bfile, whi_phenos)
+whi_genoData <- GenotypeData(whi_gds, snpAnnot=whi_snpAnnot, 
+                             scanAnnot=whi_scanAnnot)
+```
+
+Overall, it seems that we are not finding as strong GxE effects (especially for BMI, where we have the largest sample size) in WHI or the other in-hand datasets as we would like. So, a possible alternative route is the following:
+
+1. Use WHI (everyone not in the dietary modification trial) as a "tuning set" to decide what model parameters (e.g. what transformation of SFA and what set of covariates) to use. This will be done across CVD risk factors using a "gold standard" set of SNPs from CardioGxE.
+2. Run a series of genome-wide gene-by-SFA analyses in UK Biobank, one per major CVD risk factor.
+3. Characterize the proportion of GxE SNPs from CardioGxE that are replicated in UKBB. This has value whether or not the analysis "works", in that it increases our understanding of the state of diet-gene interaction studies and of whether the set of current literature findings are robust.
+4. Using summary statistics from UKBB, develop "interaction scores" for each of the risk factors, and test whether they are predictive of risk factor changes in WHI dietary modification trial.
+
+# Sanity checks
+
+## FHS
+
+```{r fhs-sanity-check, message=F}
+apoa5_snps <- unique(filter(cardio_gxe, Gene == "APOA5")$SNP)
+apoa5_snps <- apoa5_snps[apoa5_snps %in% names(fhs_rs_to_id)]
+fhs_apoa5_tg <- foreach(snp=fhs_rs_to_id[apoa5_snps],
+             .combine=rbind) %do%
+  run_test(fhs_genoData, "logTG", NULL, NULL, robust=F, start=snp, end=snp)
+# kable(select(fhs_apoa5_tg, snpID, Wald.pval), caption="APOA5 -> TG")
+
+fto_snps <- unique(filter(cardio_gxe, Gene == "FTO")$SNP)
+fto_snps <- fto_snps[fto_snps %in% names(fhs_rs_to_id)]
+fhs_fto_bmi <- foreach(snp=fhs_rs_to_id[fto_snps],
+             .combine=rbind) %do%
+  run_test(fhs_genoData, "logBMI", NULL, NULL, robust=F, start=snp, end=snp)
+# fhs_fto_bmi %>%
+#   inner_join(getAnnotation(fhs_snpAnnot), by="snpID") %>%
+#   mutate(p.value=format(Wald.pval, scientific=T, digits=3)) %>%
+#   select(rsID, p.value) %>%
+#   kable(caption="FTO SNPs -> BMI")
+
+bind_rows(`APOA5 -> TG`=fhs_apoa5_tg, `FTO -> BMI`=fhs_fto_bmi, 
+          .id="SNP_pheno_combo") %>%
+  group_by(SNP_pheno_combo) %>%
+  summarise(median_pval=median(Wald.pval)) %>%
+  kable(caption="Sanity check using known SNP-phenotype pairs",
+        longtable=T)
+
+lm(ldl ~ logBMI + logTG + hdl + logGLU + lipid_med, data=fhs_phenos) %>%
+  tidy() %>%
+  select(term, estimate, p.value) %>%
+  mutate_at(vars(estimate, p.value), function(x) round(x, 3)) %>%
+  kable(caption="Check for internal consistency within biomarkers: LDL associations",
+        longtable=T)
+
+lm(ldl ~ sfa_pct + mufa_pct + pufa_pct + tot_cal + age, 
+   data=filter(fhs_phenos, lipid_med==F)) %>%
+  tidy() %>%
+  select(term, estimate, p.value) %>%
+  mutate_at(vars(estimate, p.value), function(x) round(x, 3)) %>%
+  kable(caption="Check for FFQ-biomarker consistency: LDL associations",
+        longtable=T)
+
+lm(logTG ~ n3 + fat2carb + tot_cal + age, data=fhs_phenos) %>%
+  tidy() %>%
+  select(term, estimate, p.value) %>%
+  mutate_at(vars(estimate, p.value), function(x) round(x, 3)) %>%
+  kable(caption="Check for FFQ-biomarker consistency: log(TG) associations",
+        longtable=T)
+
+fhs_apoa2_snpID <- fhs_rs_to_id["rs5082"]
+fhs_apoa2 <- assocRegression(fhs_genoData, "logBMI", covar=c("sfa"), ivar="sfa",
+                             snpStart=fhs_apoa2_snpID, snpEnd=fhs_apoa2_snpID)
+fhs_apoa2 %>%
+  select(GxE.Est, GxE.pval) %>%
+  mutate_all(function(x) round(x, 3)) %>%
+kable(caption="SFA * APOA2 -> BMI interaction", 
+      longtable=T)
+```
+
+Biomarker and food associations seem ok, but I am concerned about the lack of APOA2-TG or FTO-BMI associations.
+
+## WHI
+
+```{r whi-sanity-check, message=F}
+apoa5_snps <- unique(filter(cardio_gxe, Gene == "APOA5")$SNP)
+apoa5_snps <- apoa5_snps[apoa5_snps %in% names(whi_rs_to_id)]
+whi_apoa5_tg <- foreach(snp=whi_rs_to_id[apoa5_snps],
+             .combine=rbind) %do%
+  run_test(whi_genoData, "logTG", NULL, NULL, robust=F, start=snp, end=snp)
+# whi_apoa5_tg %>%
+#   inner_join(getAnnotation(whi_snpAnnot), by="snpID") %>%
+#   mutate(p.value=format(Wald.pval, scientific=T, digits=3)) %>%
+#   select(rsID, p.value) %>%
+#   kable(caption="APOA5 SNPs -> TG")
+
+fto_snps <- unique(filter(cardio_gxe, Gene == "FTO")$SNP)
+fto_snps <- fto_snps[fto_snps %in% names(whi_rs_to_id)]
+whi_fto_bmi <- foreach(snp=whi_rs_to_id[fto_snps],
+             .combine=rbind) %do%
+  run_test(whi_genoData, "logBMI", NULL, NULL, robust=F, start=snp, end=snp)
+# whi_fto_bmi %>%
+#   inner_join(getAnnotation(whi_snpAnnot), by="snpID") %>%
+#   mutate(p.value=format(Wald.pval, scientific=T, digits=3)) %>%
+#   select(rsID, p.value) %>%
+#   kable(caption="FTO SNPs -> BMI")
+
+bind_rows(`APOA5 -> TG`=whi_apoa5_tg, `FTO -> BMI`=whi_fto_bmi, 
+          .id="SNP_pheno_combo") %>%
+  group_by(SNP_pheno_combo) %>%
+  summarise(median_pval=median(Wald.pval)) %>%
+  kable(caption="Sanity check using known SNP-phenotype pairs",
+        longtable=T)
+
+lm(ldl ~ logBMI + logTG + hdl + logGLU + lipid_med, data=whi_phenos) %>%
+  tidy() %>%
+  select(term, estimate, p.value) %>%
+  mutate_at(vars(estimate, p.value), function(x) round(x, 3)) %>%
+  kable(caption="Check for internal consistency within biomarkers: LDL associations",
+        longtable=T)
+
+lm(ldl ~ sfa_pct + mufa_pct + pufa_pct + tot_cal + age, 
+   data=filter(whi_phenos, lipid_med==F)) %>%
+  tidy() %>%
+  select(term, estimate, p.value) %>%
+  mutate_at(vars(estimate, p.value), function(x) round(x, 3)) %>%
+  kable(caption="Check for FFQ-biomarker consistency: LDL associations",
+        longtable=T)
+
+lm(logTG ~ n3 + fat2carb + tot_cal + age, data=whi_phenos) %>%
+  tidy() %>%
+  select(term, estimate, p.value) %>%
+  mutate_at(vars(estimate, p.value), function(x) round(x, 3)) %>%
+  kable(caption="Check for FFQ-biomarker consistency: log(TG) associations",
+        longtable=T)
+
+whi_apoa2_snpID <- whi_rs_to_id["rs5082"]
+whi_apoa2 <- assocRegression(whi_genoData, "logBMI", covar=c("sfa"), ivar="sfa",
+                             snpStart=whi_apoa2_snpID, snpEnd=whi_apoa2_snpID)
+whi_apoa2 %>%
+  select(GxE.Est, GxE.pval) %>%
+  mutate_all(function(x) round(x, 3)) %>%
+  kable(caption="SFA * APOA2 -> BMI interaction",
+        longtable=T)
+```
+
+Everything seems fine here, including expected genotype-biomarker associations.
+
+
+<!--
+# Do we have sufficient power in theory?
+
+```{r power-calcs, eval=F}
+powerGE(power=0.8,
+        model=list(prev=0.1, pGene=0.1, pEnv=0.5, orGE=1.5,
+                   beta.LOR=c(1.5, 1.2, 1.2), nSNP=5000000),
+        alpha=0.05, alpha1=1)
+```
+
+-->
+
+# Model selection: diet transformations
+
+Use WHI as a "tuning set" to determine the best model/diet transformation to use in the main UK Biobank GWIS analysis. Regressions were run for SFA -> BMI using sets of known gene-diet SNPs for BMI (from CardioGxE) to determine which has the highest mean t-statistic. Covariates are age + total calories.
+
+```{r compare-transformations, message=F, cache=1}
+sfa_snps <- unique(sfa_gxe$SNP)
+sfa_snps <- sfa_snps[sfa_snps %in% names(whi_rs_to_id)]
+
+run_whi_test <- function(diet_transform, snpset, outcome, robust=T) {
+  res <- foreach(snp=whi_rs_to_id[snpset],
+          .combine=rbind) %do%
+    run_test(whi_genoData, outcome, c(diet_transform, 
+                                      "tot_cal",
+                                      "age"), 
+             diet_transform, robust=robust, start=snp, end=snp)
+  # mean(abs(res$GxE.Stat))
+  res
+}
+
+sfa_transforms <- c("sfa", "sfa_pct",
+                    "sfa_binary", "sfa_pct_binary",
+                    "sfa_tert", "sfa_pct_tert",
+                    "sfa_pct_tert_nomid",
+                    "logsfa", "logsfa_pct",
+                    "palm")
+
+rfs <- c("logBMI", "ldl", "hdl", "logTG", "logSBP", "logGLU")
+sfa_snp_res <- map_dfr(setNames(rfs, rfs), function(rf) {
+  map_dfr(setNames(sfa_transforms, sfa_transforms), function(sfat) {
+    run_whi_test(sfat, sfa_snps, rf)
+  }, .id="sfa_transform")
+}, .id="rf")
+```
+
+```{r show-compare-transformations}
+sfa_snp_res_summary <- sfa_snp_res %>%
+  group_by(sfa_transform, rf) %>%
+  summarise(mean_abs_t_stat = mean(abs(GxE.Stat)),
+            best_p = min(GxE.pval),
+            num_nominal_p = sum(GxE.pval < 0.05)) %>%
+  ungroup()
+sfa_snp_res_order <- sfa_snp_res_summary %>%
+  group_by(sfa_transform) %>%
+  summarise(mean_mean = mean(mean_abs_t_stat)) %>%
+  arrange(desc(mean_mean))
+sfa_snp_res_summary %>%
+  mutate(sfa_transform = factor(sfa_transform, 
+                                levels=sfa_snp_res_order$sfa_transform)) %>%
+  ggplot(aes(x=rf, y=fct_rev(sfa_transform), fill=mean_abs_t_stat)) + 
+  geom_tile() +
+  labs(title="Comparison of SFA transformations using CardioGxE SNPs")
+```
+
+Conclusion: A binary split (daily SFA above or below the median) appears to result in a modest, but meaningful, increase in mean z-score across the set of SNPs and phenotypes compared to other potential SFA transformations. However, it seems that this conclusion is not consistent across phenotypes (e.g. GxEs for TG appear more strongly using SFA as % kcals, while GxEs for SBP appear more strongly using "raw" SFA).
+
+# Model selection: covariate selection
+
+Having determined a tentative SFA transformation to use (a simple binary split), a similar set of tests were run to determine whether any specific set of dietary covariates produce more GxE replications for the same set of SNPs. "carb_ex" and "pufa_ex" here refer to exchange/substitution models in which all calorie-providing nutrients are adjusted for other than the nutrient to be "substituted".
+
+```{r compare-covars, message=F, cache=1}
+run_whi_test <- function(covars, snpset, outcome, robust=T) {
+  res <- foreach(snp=whi_rs_to_id[snpset],
+          .combine=rbind) %do%
+    run_test(whi_genoData, outcome, 
+             covars,
+             "sfa_binary", robust=robust, start=snp, end=snp)
+  res
+}
+
+covar_sets <- list(nodiet = c("age"),
+                   tot_cal = c("age", "tot_cal"),
+                   carb_ex = c("age", "tot_cal", "mufa", "pufa", "pro", "alc"),
+                   pufa_ex = c("age", "tot_cal", "mufa", "cho", "pro", "alc"))
+
+rfs <- c("logBMI", "ldl", "hdl", "logTG", "logSBP", "logGLU")
+covar_set_snp_res <- map_dfr(setNames(rfs, rfs), function(rf) {
+  map_dfr(covar_sets, function(cs) {
+    run_whi_test(c("sfa_binary", cs), sfa_snps, rf)
+  }, .id="covar_set")
+}, .id="rf")
+```
+
+```{r show-compare-covars}
+covar_set_snp_res_summary <- covar_set_snp_res %>%
+  group_by(covar_set, rf) %>%
+  summarise(mean_abs_t_stat = mean(abs(GxE.Stat)),
+            best_p = min(GxE.pval),
+            num_nominal_p = sum(GxE.pval < 0.05)) %>%
+  ungroup()
+covar_set_snp_res_order <- covar_set_snp_res_summary %>%
+  group_by(covar_set) %>%
+  summarise(mean_mean = mean(mean_abs_t_stat)) %>%
+  arrange(desc(mean_mean))
+covar_set_snp_res_summary %>%
+  mutate(covar_set = factor(covar_set,
+                            levels=covar_set_snp_res_order$covar_set)) %>%
+  ggplot(aes(x=rf, y=fct_rev(covar_set), fill=mean_abs_t_stat)) +
+  geom_tile() +
+  labs(title="Comparison of dietary covariate adjustments using CardioGxE SNPs")
+```
+
+```{r compare-covars, message=F}
+mytest <- function(covars, snpset, outcome, ivar, robust=T) {
+  res <- foreach(snp=whi_rs_to_id[snpset],
+          .combine=rbind) %do%
+    run_test(whi_genoData, outcome, 
+             covar=covars,
+             ivar=ivar, robust=robust, start=snp, end=snp)
+  res
+}
+
+covar_sets <- list(tot_cal = c("age", "tot_cal"))
+
+myrfs <- c("delta_bmi", "delta_ldl", "delta_hdl", "delta_tg", "delta_sbp", "delta_glu")
+a <- map_dfr(setNames(myrfs, myrfs), function(rf) {
+  map_dfr(covar_sets, function(cs) {
+    mytest(c("sfa_binary", cs), sfa_snps, rf, "sfa_binary")
+  }, .id="covar_set")
+}, .id="rf")
+asum <- a %>%
+  group_by(covar_set, rf) %>%
+  summarise(mean_abs_t_stat = mean(abs(GxE.Stat), na.rm=T),
+            best_p = min(GxE.pval),
+            num_nominal_p = sum(GxE.pval < 0.05)) %>%
+  ungroup()
+```
+
+# Tentative conclusions
+
+* Replication of GxEs in WHI is fairly weak overall, but seems to be 
+* Use a simple binary split as the SFA consumption variable
+* Minimal covariate adjustment (age + total calories)
+* Next step: GWIS (SFA * SNP -> risk factor) for a series of CVD risk factors
+
+<!--
+# Other
+
+```{r compare-transformations-extra, message=F, eval=F}
+sfa_bmi_snps <- unique(filter(
+  bmi_gxe, grepl(paste(sfa_terms, collapse="|"), `Environmental factor`))$SNP)
+sfa_bmi_snps <- sfa_bmi_snps[sfa_bmi_snps %in% names(whi_rs_to_id)]
+sfa_ldl_snps <- unique(filter(
+  ldl_gxe, grepl(paste(sfa_terms, collapse="|"), `Environmental factor`))$SNP)
+sfa_ldl_snps <- sfa_ldl_snps[sfa_ldl_snps %in% names(whi_rs_to_id)]
+sfa_tg_snps <- unique(filter(
+  tg_gxe, grepl(paste(sfa_terms, collapse="|"), `Environmental factor`))$SNP)
+sfa_tg_snps <- sfa_tg_snps[sfa_tg_snps %in% names(whi_rs_to_id)]
+sfa_glu_snps <- unique(filter(
+  glu_gxe, grepl(paste(sfa_terms, collapse="|"), `Environmental factor`))$SNP)
+sfa_glu_snps <- sfa_glu_snps[sfa_glu_snps %in% names(whi_rs_to_id)]
+sfa_sbp_snps <- unique(filter(
+  sbp_gxe, grepl(paste(sfa_terms, collapse="|"), `Environmental factor`))$SNP)
+sfa_sbp_snps <- sfa_sbp_snps[sfa_sbp_snps %in% names(whi_rs_to_id)]
+fat_bmi_snps <- unique(filter(
+  bmi_gxe, grepl(paste(fat_terms, collapse="|"), `Environmental factor`))$SNP)
+fat_bmi_snps <- fat_bmi_snps[fat_bmi_snps %in% names(whi_rs_to_id)]
+
+# myorder <- sfa_t_stats %>%
+#   group_by(sfa_transform) %>%
+#   summarise(mean_mean = mean(mean_t_stat)) %>%
+#   arrange(desc(mean_mean))
+# sfa_t_stats %>%
+#   mutate()
+#   ggplot(aes(x=rf, y=sfa_transform, fill=mean_t_stat)) +
+#   geom_tile()
+#   # spread(key=rf, value=mean_t_stat) %>%
+
+  
+  # sfa_transforms_bmi_res <- tibble(sfa_transform=sfa_transforms) %>%
+#   mutate(mean_t_stat=map_dbl(sfa_transform, run_whi_test, 
+#                              sfa_bmi_snps, "logBMI")) %>%
+#   arrange(desc(mean_t_stat))
+# sfa_transforms_ldl_res <- tibble(sfa_transform=sfa_transforms) %>%
+#   mutate(mean_t_stat=map_dbl(sfa_transform, run_whi_test,
+#                              sfa_ldl_snps, "ldl"))
+# sfa_transforms_tg_res <- tibble(sfa_transform=sfa_transforms) %>%
+#   mutate(mean_t_stat=map_dbl(sfa_transform, run_whi_test,
+#                              sfa_tg_snps, "logTG"))
+# sfa_transforms_glu_res <- tibble(sfa_transform=sfa_transforms) %>%
+#   mutate(mean_t_stat=map_dbl(sfa_transform, run_whi_test,
+#                              sfa_glu_snps, "logGLU"))
+# sfa_transforms_sbp_res <- tibble(sfa_transform=sfa_transforms) %>%
+#   mutate(mean_t_stat=map_dbl(sfa_transform, run_whi_test,
+#                              sfa_sbp_snps, "logSBP"))
+# 
+# fat_transforms <- c("fat", "fat_pct",
+#                     "fat_binary", "fat_pct_binary",
+#                     "fat_tert", "fat_pct_tert",
+#                     "fat_pct_tert_nomid",
+#                     "logfat", "logfat_pct")
+# fat_transforms_bmi_res <- tibble(fat_transform=fat_transforms) %>%
+#   mutate(mean_t_stat=map_dbl(fat_transform, run_whi_test, 
+#                              fat_bmi_snps, "logBMI")) %>%
+#   arrange(desc(mean_t_stat))
+# sfa_transforms_res %>%
+#   inner_join(fat_transforms_res, by="sfa_transform", 
+#              suffix=c("_SFAsnps", "FATsnps")) %>%
+#   kable(caption="Test statistics for different SFA transforms using 'gold standard' CardioGxE SNP sets",
+#         digits=c(0, 2, 2))
+```
+
+```{r whi-replications, message=F, eval=F}
+all_bmi_res <- foreach(snp=whi_rs_to_id[snpset],
+          .combine=rbind) %do%
+    run_test(whi_genoData, "logBMI", c(diet_transform, 
+                                      "tot_cal",
+                                      "age"), 
+             diet_transform, robust=T, start=snp, end=snp)
+
+sfa_transforms_res %>%
+  inner_join(fat_transforms_res, by="sfa_transform", 
+             suffix=c("_SFAsnps", "FATsnps")) %>%
+  kable(caption="Test statistics for different SFA transforms using 'gold standard' CardioGxE SNP sets",
+        digits=c(0, 2, 2))
+```
+
+```{r abc, eval=F}
+sfa_only <- c("sfa", "age")
+sfa_carbEx_covars <- c("sfa", "mufa", "pufa", "pro", "alc", "tot_cal", "age")
+sfa_pufaEx_covars <- c("sfa", "mufa", "pro", "cho", "alc", "tot_cal", "age")
+fat_carbEx_covars <- c("fat", "pro", "alc", "tot_cal", "age")
+# covars <- c("myhei", "tot_cal", "age")
+outcome <- "logBMI"
+ivar <- "sfa"
+phenos <- getAnnotation(scanAnnot)
+
+run_test("logBMI", c("sfa_pct", "age"), "sfa_pct", robust=T)
+
+### INCLUDE SEX?
+
+lapply(list(sfa_only, sfa_carbEx_covars, sfa_pufaEx_covars),
+       run_test, "sfa", robust=T)
+```
+
+```{r sfa-bmi-cardiogxe, eval=F}
+sfa_bmi_gxe <- bmi_gxe %>% 
+  filter(grepl(paste(sfa_terms, collapse="|"), `Environmental factor`, ignore.case=T))
+  # distinct(SNP, .keep_all=T)
+
+fat_bmi_gxe <- bmi_gxe %>% 
+  filter(grepl(paste(fat_terms, collapse="|"), `Environmental factor`))
+
+sfa_ldl_gxe <- ldl_gxe %>% 
+  filter(grepl(paste(sfa_terms, collapse="|"), `Environmental factor`))
+```
+
+```{r replicate-sfa-bmi-gxe, eval=F}
+relevant_snps <- unique(unlist(strsplit(sfa_bmi_gxe$SNP, split=", | or ")))
+
+bfile <- "../data/processed/whi_hypothesis"
+
+gds_name <- paste0(bfile, ".gds")
+make_gds(bfile, gds_name)
+gds <- GdsGenotypeReader(openfn.gds(gds_name, allow.fork=T))
+
+snpAnnot <- bim_to_SnADF(bfile)
+rsID_to_snpID <- with(getAnnotation(snpAnnot), setNames(snpID, rsID))
+phenos <- read_delim("../data/processed/gen4/whi_white_gwas_phenos.txt", 
+                     delim=" ") %>%
+  mutate(sex="F",
+         myvar=sfa>22,
+         myvar2=ifelse(sfa<17, 0, ifelse(sfa > 30, 2, NA)),
+         sfa_pct=sfa / tot_cal * 100,
+         myvar3=sfa_pct > quantile(sfa_pct, 0.5),
+         myvar4=cut(sfa, quantile(sfa, seq(0,1,0.25)), labels=1:4, include.lowest=T),
+         logsfa=log(sfa),
+         logsfa_pct=log(sfa_pct))
+# mutate(myhei=-scale(palm) + scale(pufa) + scale(n3))
+scanAnnot <- fam_to_ScADF_whi(bfile, phenos)
+genoData <- GenotypeData(gds, snpAnnot=snpAnnot, scanAnnot=scanAnnot)
+
+covars <- c("myvar", "tot_cal", "age")
+covars <- c("sfa", "mufa", "pufa", "pro", "alc", "tot_cal", "age")
+
+a <- assocRegression(
+  genoData,
+  outcome="logBMI",
+  model.type="linear",
+  gene.action="additive",
+  covar=covars,
+  ivar="myvar",
+  robust=F)
+
+run_test <- function(outcome, covars, ivar, robust, start, end) {
+  assocRegression(
+    genoData,
+    outcome=outcome,
+    model.type="linear",
+    gene.action="additive",
+    covar=covars,
+    ivar=ivar,
+    robust=robust,
+    snpStart=start, snpEnd=end)
+}
+
+covars <- c("sfa", "tot_cal", "age", paste0("PC", 1:5)) #0.35
+# covars <- c("sfa", "mufa", "pufa", "tot_cal", "age") #0.37
+# covars <- c("sfa", "mufa", "pufa", "pro", "alc", "tot_cal", "age") #0.31
+# covars <- c("sfa", "mufa", "cho", "pro", "alc", "tot_cal", "age") #0.31
+# covars <- c("logsfa", "mufa", "pufa", "pro", "alc", "tot_cal", "age", ) #0.37
+# covars <- c("sfa_pct", "age") #0.50
+# covars <- c("sfa_pct", "tot_cal", "age") #0.50
+# covars <- c("myvar", "age") #0.22
+covars <- c("myvar", "tot_cal", "age") #0.21
+# covars <- c("myvar2", "age") #0.38
+# covars <- c("myvar2", "tot_cal", "age") #0.38
+# covars <- c("myvar3", "age") #0.40
+# covars <- c("myvar3", "tot_cal", "age") #0.40
+covars <- c("myvar4", "age") #0.40
+z <- foreach(snp=rsID_to_snpID[relevant_snps[relevant_snps %in% names(rsID_to_snpID)]], 
+             .combine=rbind) %do%
+  run_test("logBMI", covars, "sfa", robust=F, start=snp, end=snp)
+summary(z$GxE.pval)
+# a %>%
+#   select(snpID, GxE.Est, GxE.pval, JOINT=Joint.pval)
+```
+
+```{r replicate-fat-bmi-gxe, eval=F}
+relevant_snps <- unique(unlist(strsplit(fat_bmi_gxe$SNP, split=", | or ")))
+
+bfile <- "../data/processed/whi_hypothesis"
+
+gds_name <- paste0(bfile, ".gds")
+make_gds(bfile, gds_name)
+gds <- GdsGenotypeReader(openfn.gds(gds_name, allow.fork=T))
+
+snpAnnot <- bim_to_SnADF(bfile)
+rsID_to_snpID <- with(getAnnotation(snpAnnot), setNames(snpID, rsID))
+phenos <- read_delim("../data/processed/gen4/whi_white_gwas_phenos.txt", 
+                     delim=" ") %>%
+  mutate(sex="F",
+         myvar=fat > quantile(fat, 0.5),
+         # myvar2=ifelse(sfa<17, 0, ifelse(sfa > 30, 2, NA)),
+         fat_pct=fat / tot_cal * 100,
+         myvar3=fat_pct > quantile(fat_pct, 0.5),
+         myvar4=cut(fat, quantile(fat, seq(0,1,0.25)), labels=1:4, include.lowest=T))
+         # logsfa=log(sfa),
+         # logsfa_pct=log(sfa_pct))
+# mutate(myhei=-scale(palm) + scale(pufa) + scale(n3))
+scanAnnot <- fam_to_ScADF_whi(bfile, phenos)
+genoData <- GenotypeData(gds, snpAnnot=snpAnnot, scanAnnot=scanAnnot)
+
+run_test <- function(outcome, covars, ivar, robust, start, end) {
+  assocRegression(
+    genoData,
+    outcome=outcome,
+    model.type="linear",
+    gene.action="additive",
+    covar=covars,
+    ivar=ivar,
+    robust=robust,
+    snpStart=start, snpEnd=end)
+}
+
+covars <- c("fat", "tot_cal", "age", paste0("PC", 1:5)) #0.47
+covars <- c("fat", "pro", "alc", "tot_cal", "age") #0.46
+covars <- c("fat_pct", "tot_cal", "age", paste0("PC", 1:5)) #0.42
+covars <- c("myvar", "age") #0.5
+covars <- c("myvar3", "age") #0.43
+covars <- c("myvar4", "age") #0.45
+# covars <- c("myvar", "tot_cal", "age") #0.21
+# covars <- c("myvar2", "age") #0.38
+# covars <- c("myvar2", "tot_cal", "age") #0.38
+# covars <- c("myvar3", "age") #0.40
+# covars <- c("myvar3", "tot_cal", "age") #0.40
+# covars <- c("myvar4", "age") #0.40
+z <- foreach(snp=rsID_to_snpID[relevant_snps[relevant_snps %in% names(rsID_to_snpID)]], 
+             .combine=rbind) %do%
+  run_test("logBMI", covars, "myvar4", robust=F, start=snp, end=snp)
+summary(z$GxE.pval)
+
+fat_bmi_fullset <- assocRegression(
+  outcome="logBMI",
+)
+```
+
+```{r make-scores, eval=F}
+single_snp_weights <- data.frame(SNP="rs5082", ALT="G", WEIGHT=1)
+write_tsv(single_snp_weights, "../data/processed/score_weights/apoa2_only.txt")
+
+bim_df <- read_tsv(paste0("../data/processed/whi_hypothesis.bim"), 
+                   col_names=c("chromosome", "rsID", "cm", 
+                               "position", "A1", "A2"))
+sfa_bmi_weights <- sfa_bmi_gxe %>%
+  inner_join(bim_df, by=c("SNP"="rsID")) %>% 
+  distinct(SNP, .keep_all=T) %>%
+  mutate(weight=case_when(`Risk allele` == A1 ~ 1,
+                          `Risk allele` == A2 ~ -1,
+                          TRUE ~ as.numeric(NA))) %>%
+  select(SNP, `Risk allele`, A1, A2, weight) %>%
+  na.omit() %>%
+  select(SNP, REF=A1, WEIGHT=weight)
+write_tsv(sfa_bmi_weights, "../data/processed/score_weights/sfa_bmi.txt")
+
+
+sfa_bmi_reweighted_weights <- z %>%
+  select(snpID, GxE.Est, GxE.pval) %>%
+  inner_join(getAnnotation(snpAnnot), by="snpID") %>% 
+  distinct(rsID, .keep_all=T) %>%
+  select(SNP=rsID, REF=A1, WEIGHT=GxE.Est)
+write_tsv(sfa_bmi_reweighted_weights, "../data/processed/score_weights/sfa_bmi_reweighted.txt")
+
+bmi_snps <- unique(unlist(strsplit(bmi_gxe$SNP, split=", | or ")))
+bmi_reweighted_weights <- a %>%
+  filter(snpID %in% rsID_to_snpID[bmi_snps],
+         GxE.pval < 0.1) %>%
+  select(snpID, GxE.Est, GxE.pval) %>%
+  inner_join(getAnnotation(snpAnnot), by="snpID") %>% 
+  distinct(rsID, .keep_all=T) %>%
+  select(SNP=rsID, REF=A1, WEIGHT=GxE.Est)
+write_tsv(bmi_reweighted_weights, "../data/processed/score_weights/bmi_reweighted.txt")
+
+all_cge_reweighted_weights <- a %>%
+  select(snpID, GxE.Est, GxE.pval) %>%
+  inner_join(getAnnotation(snpAnnot), by="snpID") %>% 
+  distinct(rsID, .keep_all=T) %>%
+  select(SNP=rsID, REF=A1, WEIGHT=GxE.Est)
+write_tsv(all_cge_reweighted_weights, "../data/processed/score_weights/all_cge_reweighted.txt")
+```
+
+```{r start-with-deltas, eval=F}
+fam_to_ScADF_whi_DM <- function(bfile) {
+  phenos <- read_delim("../data/processed/gen4/whi_white_DM_phenos.txt", 
+                       delim=" ") %>%
+    mutate(sex="F",
+           bmiBin=delta_bmi>0)
+  # mutate(myhei=-scale(palm) + scale(pufa) + scale(n3))
+  fam_df <- read_delim(paste0(bfile, ".fam"), 
+                       delim=" ", col_names=c("FID", "IID", "father", "mother", 
+                                              "sex", "pheno")) %>%
+    select(IID) %>%
+    left_join(phenos, by=c("IID"="SampleID")) %>%
+    mutate(scanID=IID)
+  ScanAnnotationDataFrame(data.frame(fam_df, stringsAsFactors=F))
+}
+
+gds_name <- paste0(bfile, ".gds")
+make_gds(bfile, gds_name)
+gds <- GdsGenotypeReader(openfn.gds(gds_name, allow.fork=T))
+
+snpAnnot <- bim_to_SnADF(bfile)
+rsID_to_snpID <- with(getAnnotation(snpAnnot), setNames(snpID, rsID))
+scanAnnot <- fam_to_ScADF_whi_DM(bfile)
+genoData <- GenotypeData(gds, snpAnnot=snpAnnot, scanAnnot=scanAnnot)
+
+ids_with_delta_bmi <- with(getAnnotation(scanAnnot), scanID[!is.na(delta_bmi)])
+set.seed(1)
+train_ids <- sample(ids_with_delta_bmi, size=3000)
+test_ids <- ids_with_delta_bmi[!ids_with_delta_bmi %in% train_ids]
+
+dm <- assocRegression(genoData, outcome="bmiBin", covar="", 
+                      scan.exclude=test_ids)
+dm2 <- assocRegression(genoData, outcome="bmiBin", covar="", 
+                      scan.exclude=train_ids)
+```
+
+-->

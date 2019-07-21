@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 from sklearn.preprocessing import scale
+import statsmodels.formula.api as smf
 
 
 # Risk factors
@@ -118,43 +119,46 @@ def rank_INT(values):
     product_INT = stats.norm.ppf((ranks - c) / (len(ranks) - 2*c + 1))
     return product_INT
 
-def winsorize(values, SDs_from_mean=4):
-    # Winsorize values based on SDs from mean (rather than percentiles)
-    sd = np.std(values)
-    values[values < values.mean() - 4 * sd] = values.mean() - 4 * sd
-    values[values > values.mean() + 4 * sd] = values.mean() + 4 * sd
-    return values
+gwas_variables = ['subjID', 'sex', 'age_5', 'bmi_5', 'sbp_5',
+                  'sfa_pct_5', 'pufa_pct_5', 'tot_fat_pct_5', 'carb_5',
+                  'f2c_5', 'sbp_resid_5', 'sfa_pct_resid_5']
+phenotypes = ['sfa_bmi_5', 'f2c_bmi_5', 'sfa_sbp_5', 'f2c_sbp_5', 'sfa_sbpR_5',
+             'sfaR_sbpR_5']
 
-gwas_features = ['subjID', 'ldl_5', 'sfa_pct_5', 'pufa_pct_5', 'tot_fat_pct_5',
-                 'carb_5', 'f2c_5', 'age_5', 'tg_5', 'glu_5', 'bmi_5']
-phenotypes = ['sfa_ldl_5', 'fat_ldl_5', 'f2c_ldl_5', 
-              'sfa_bmi_5', 'f2c_bmi_5', 'f2c_tg_5', 'f2c_glu_5']
-gwas_phenos = (fhs_metadata
-               .query('lipid_med_5 == False')
-               .filter(gwas_features + ['sex'])
+fhs_metadata_nomeds = fhs_metadata.query('ht_med_5 == False').copy()
+fhs_metadata_nomeds["sbp_resid_5"] = smf.ols('sbp_5 ~ age_5 + sex + bmi_5', 
+                                             data=fhs_metadata_nomeds).fit().resid
+fhs_metadata_nomeds["sfa_pct_resid_5"] = smf.ols('sfa_pct_5 ~ pufa_pct_5', 
+                                                 data=fhs_metadata_nomeds).fit().resid
+
+gwas_phenos = (fhs_metadata_nomeds
+               .query('ht_med_5 == False')
+               .filter(gwas_variables)
                .merge(ped, left_on="subjID", right_on="IID") 
                .dropna()
                .assign(FID = lambda x: x.subjID,
                        IID = lambda x: x.subjID)
-               .assign(sfa_ldl_5 = lambda x: scale(x.sfa_pct_5) * scale(x.ldl_5),
-                       fat_ldl_5 = lambda x: scale(x.tot_fat_pct_5) * scale(x.ldl_5),
-                       f2c_5_ldl_5 = lambda x: scale(x.f2c_5) * scale(x.ldl_5),
-                       sfa_bmi_5 = lambda x: scale(x.sfa_pct_5) * scale(x.bmi_5),
-                       f2c_5_bmi_5 = lambda x: scale(x.f2c_5) * scale(x.bmi_5),
-                       f2c_5_tg_5 = lambda x: scale(x.f2c_5) * scale(x.tg_5),
-                       f2c_5_glu_5 = lambda x: scale(x.f2c_5) * scale(x.glu_5))
-               .filter(['FID', 'IID', 'sex'] + phenotypes + gwas_features))
+               .assign(sfa_bmi_5 = lambda x: scale(x.sfa_pct_5) * scale(x.bmi_5),
+                       f2c_bmi_5 = lambda x: scale(x.f2c_5) * scale(x.bmi_5),
+                       sfa_sbp_5 = lambda x: scale(x.sfa_pct_5) *
+                       scale(x.sbp_5),
+                       sfa_sbpR_5 = lambda x: scale(x.sfa_pct_5) *
+                       scale(x.sbp_resid_5),
+                       sfaR_sbpR_5 = lambda x: scale(x.sfa_pct_resid_5) *
+                       scale(x.sbp_resid_5),
+                       f2c_sbp_5 = lambda x: scale(x.f2c_5) * scale(x.sbp_5))
+               .filter(['FID', 'IID', 'sex'] + phenotypes +
+                       [v for v in gwas_variables if v != "sex"]))
                ## FOR THE MOMENT, HAVE NOT FILTERED OUT RELATED SUBJECTS
 gwas_phenos_WIN = (gwas_phenos
                    .filter(phenotypes)
-                   .apply(winsorize)
+                   .apply(stats.mstats.winsorize, limits=[0.01, 0.01])
                    .rename({p: p + "_WIN" for p in phenotypes}, axis=1))
 gwas_phenos_INT = (gwas_phenos
                    .filter(phenotypes)
                    .apply(rank_INT)
                    .rename({p: p + "_INT" for p in phenotypes}, axis=1))
-gwas_phenos = pd.concat([gwas_phenos, gwas_phenos_WIN, gwas_phenos_INT],
-                        axis=1) 
+gwas_phenos = pd.concat([gwas_phenos, gwas_phenos_WIN, gwas_phenos_INT], axis=1) 
                
-gwas_phenos.to_csv("../data/processed/fhs/fhs_gwas_phenos.txt", sep=" ", 
-                   index=False)
+gwas_phenos.to_csv("../data/processed/fhs/fhs_gwas_phenos_sbp.txt", sep=" ", 
+                   na_rep="NA", index=False)

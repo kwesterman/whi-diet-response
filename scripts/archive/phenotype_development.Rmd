@@ -1,0 +1,225 @@
+---
+title: Phenotype development for dietary GWIS project
+output: html_document
+---
+
+```{r setup, include=F}
+knitr::opts_chunk$set(echo=F, cache.path="../cache/phenotype_development/",
+                      fig.path="../output/figures/phenotype_development/")
+suppressMessages(silent <- lapply(
+  c("knitr", "tidyverse", "cowplot", "doParallel", "kableExtra",
+    "glmnet", "broom", "GWASTools", "SNPRelate"), library, character.only=T))
+```
+
+```{r helpers}
+INT <- function(x) qnorm((rank(x, na.last="keep") - 0.5) / sum(!is.na(x)))
+
+winsorize <- function(x, num_SDs=5) {
+  bounds <- mean(x, na.rm=T) + num_SDs * c(-1, 1) * sd(x, na.rm=T)
+  case_when(x < bounds[1] ~ bounds[1],
+            x > bounds[2] ~ bounds[2],
+            TRUE ~ x)
+}
+
+make_qqplot <- function(p_vec, plotTitle="Title") {
+  p_vec <- p_vec[!is.na(p_vec)]
+  qqplot(-log10(1:length(p_vec) / length(p_vec)), -log10(p_vec), pch=".", 
+         main=plotTitle, xlab="Expected (-logP)", ylab="Observed (-logP)")
+  abline(0, 1, col="red")
+}
+
+gControl <- function(pVals) {
+  # See van Iterson 2017 methods and/or Lehne 2015 code for details on genomic control for EWAS
+  # Below is modeled after Lehne 2015
+  lambda <- median(qchisq(pVals, df=1, lower.tail=F), na.rm=T)/qchisq(0.5, df=1)
+  round(lambda, 2)
+}
+```
+
+```{r load-metadata, message=F}
+raw_phenos_whi <- read_csv("../data/processed/metadata_whi.csv", 
+                           col_types=cols(sex="c", lipid_med="l", dm_trial="l",
+                                          dm_intervention="l"))
+
+whi_sample_to_subject <- read_tsv("../data/raw/whi/sample_info.txt", skip=15) %>%
+  select(sampleID=SampleID, subjID=SubjectID) %>%
+  select(sampleID, subjID)
+```
+
+```{r clean-metadata, message=F}
+clean_phenos_whi <- raw_phenos_whi %>%
+  mutate(ht_med=as.logical(ht_med),
+         ldl=ifelse(lipid_med, ldl / 0.75, ldl),
+         glu=ifelse(dm_med, glu / 0.75, glu),
+         sbp=ifelse(ht_med, sbp + 15, sbp),
+         
+         logGlu=winsorize(log(glu)),
+         loghsCRP=winsorize(log(hsCRP)),
+         logSBP=winsorize(log(sbp)),
+         logTg=winsorize(log(tg)),
+         logHDL=winsorize(log(hdl)),
+         logBMI=winsorize(log(bmi)),
+         ldl=winsorize(ldl)
+         # myhei=2 * scale(winsorize(FV, 0.05)) + scale(winsorize(WG, 0.05)) + 
+         #   scale(winsorize(nuts, 0.05)) - scale(winsorize(RM, 0.05))
+         )
+
+cs_phenos_whi <- clean_phenos_whi %>%
+  filter(visit_year == 0)
+
+rfs <- c("logBMI", "logHDL", "logTg", "logSBP", "logGlu", "ldl", "loghsCRP")
+dvs <- c("tot_cal", "fat", "cho", "pro", "alc", "sfa", "mufa", "pufa")
+
+# long_phenos_whi <- clean_phenos_whi %>%
+#   mutate(arm=ifelse(dm_intervention, "intervention", "control")) %>%
+#   group_by(subjID, age, race, sex, dm_trial, arm) %>%
+#   filter(n() > 1) %>%
+#   arrange(visit_year) %>%
+#   summarise_at(vars("bmi", "hdl", "ldl", "chol", "tg", "glu", "sbp"), 
+#                list(delta=function(x) x[n()] - x[1],
+#                     baseline=function(x) x[1])) %>%
+#   ungroup() 
+```
+
+```{r diet-rf-associations}
+formulas <- list(
+  sfa_carbExchange="~ sfa + mufa + pufa + pro + alc + tot_cal",
+  sfa_pufaExchange="~ sfa + mufa + cho + pro + alc + tot_cal",
+  fat_carbExchange="~ fat + pro + alc + tot_cal",
+  n3="~ n3 + fat + tot_cal"
+)
+
+diet_main_effect <- function(rf, preds) {
+  form <- as.formula(paste(rf, formulas[[preds]]))
+  lm(form, data=cs_phenos_whi)
+}
+
+dv_rf_res <- expand.grid(rf=rfs, dv=names(formulas), stringsAsFactors=F) %>%
+  mutate(res=map2(rf, dv, diet_main_effect),
+         glance=map(res, function(x) broom::tidy(x)[2, ])) %>%
+  unnest(glance)
+```
+
+```{r plot-main-effects}
+dv_rf_res %>%
+  mutate(sig_star=ifelse(p.value < 0.05, "*", "")) %>%
+  ggplot(aes(x=dv, y=rf, fill=statistic)) +
+  geom_tile() +
+  geom_text(aes(label=sig_star)) +
+  scale_fill_gradient2() +
+  labs(title="Main effect of diet in WHI whites") +
+  theme(axis.text.x=element_text(angle=30, hjust=0.8))
+```
+
+```{r prep-random-snp-dataset}
+bfile_prefix <- "test_whi_bfileset"
+
+# SNP annotations
+bim_df <- read_tsv(paste0("../data/processed/gen3/", bfile_prefix, ".bim"), 
+                   col_names=c("chromosome", "rsID", "cm", 
+                               "position", "A1", "A2")) %>%
+  mutate(snpID=1:nrow(.)) %>%
+  mutate_at(vars(chromosome, position), as.integer)
+snpAnnot <- SnpAnnotationDataFrame(data.frame(bim_df, stringsAsFactors=F))
+
+# Scan annotations
+phenos <- read_delim("../data/processed/gen3/whi_white_gwas_phenos.txt", 
+                     delim=" ")
+fam_df <- read_delim(paste0("../data/processed/gen3/", bfile_prefix, ".fam"), 
+                     delim=" ", col_names=c("FID", "IID", "father", "mother", 
+                                            "sex", "pheno")) %>%
+  left_join(phenos, by=c("IID")) %>%
+  mutate(scanID=IID)
+scanAnnot <- ScanAnnotationDataFrame(data.frame(fam_df, stringsAsFactors=F))
+
+# Genotype data (hard calls for the moment)
+if (file.exists("../data/processed/test_gds")) file.remove("../data/processed/test_gds")
+snpgdsBED2GDS(paste0("../data/processed/gen3/", bfile_prefix, ".bed"),
+              paste0("../data/processed/gen3/", bfile_prefix, ".fam"),
+              paste0("../data/processed/gen3/", bfile_prefix, ".bim"),
+              "../data/processed/test_gds",
+              cvt.snpid="int")
+snpgdsSummary("../data/processed/test_gds")
+gds <- GdsGenotypeReader(openfn.gds("../data/processed/test_gds", allow.fork=T))
+genoData <- GenotypeData(gds, snpAnnot=snpAnnot, scanAnnot=scanAnnot)
+
+run_gwas_chunk <- function(outcome, covars, ivar, idx, robust=F) {
+  assocRegression(
+    genoData,
+    outcome=outcome,
+    model.type="linear",
+    covar=covars,
+    ivar=ivar,
+    robust=robust,
+    snpStart=min(which(buckets == idx)),
+    snpEnd=max(which(buckets == idx)))
+}
+```
+
+## Validation of my observations that heteroscedasticity leads to crazy QQ plots
+
+### Inflation example: Fat (carb-exchange) -> Glu
+
+```{r fat-glu, cache=1}
+phenos %>%
+  mutate(fat_cut=cut(fat, 4)) %>%
+  group_by(fat_cut) %>%
+  summarise(glu_var=round(var(glu, na.rm=T))) %>%
+  kable(booktabs=T)
+
+outcome <- "logGLU"
+covars <- c("age", "fat", "pro", "alc", "tot_cal", paste0("PC", 1:5))
+ivar <- "fat"
+
+num_cores <- 4
+buckets <- as.integer(cut(1:nsnp(genoData), num_cores))
+cl <- makeForkCluster(num_cores)
+registerDoParallel(cl)
+fat_glu_nonrobust <- foreach(idx=unique(buckets), .combine=rbind, .packages="GWASTools") %dopar%
+  run_gwas_chunk(outcome, covars, ivar, idx, robust=F)
+fat_glu_robust <- foreach(idx=unique(buckets), .combine=rbind, .packages="GWASTools") %dopar%
+  run_gwas_chunk(outcome, covars, ivar, idx, robust=T)
+stopCluster(cl)
+
+maf_filter <- fat_glu_nonrobust$MAF > 0.01
+par(mfrow=c(1, 2))
+make_qqplot(fat_glu_nonrobust$GxE.pval[maf_filter], 
+            plotTitle=paste0("Non-robust (lambda = ", 
+                             gControl(fat_glu_nonrobust$GxE.pval[maf_filter])))
+make_qqplot(fat_glu_robust$GxE.pval[maf_filter], 
+            plotTitle=paste0("Robust (lambda = ", 
+                             gControl(fat_glu_robust$GxE.pval[maf_filter])))
+```
+
+### Deflation example: Fat (carb-exchange) -> SBP
+
+```{r fat-sbp, cache=1}
+phenos %>%
+  mutate(fat_cut=cut(fat, 4)) %>%
+  group_by(fat_cut) %>%
+  summarise(sbp_var=round(var(sbp, na.rm=T))) %>%
+  kable(booktabs=T)
+
+outcome <- "logSBP"
+covars <- c("age", "fat", "pro", "alc", "tot_cal", paste0("PC", 1:5))
+ivar <- "fat"
+
+num_cores <- 4
+buckets <- as.integer(cut(1:nsnp(genoData), num_cores))
+cl <- makeForkCluster(num_cores)
+registerDoParallel(cl)
+fat_sbp_nonrobust <- foreach(idx=unique(buckets), .combine=rbind, .packages="GWASTools") %dopar%
+  run_gwas_chunk(outcome, covars, ivar, idx, robust=F)
+fat_sbp_robust <- foreach(idx=unique(buckets), .combine=rbind, .packages="GWASTools") %dopar%
+  run_gwas_chunk(outcome, covars, ivar, idx, robust=T)
+stopCluster(cl)
+
+maf_filter <- fat_sbp_nonrobust$MAF > 0.01
+par(mfrow=c(1, 2))
+make_qqplot(fat_sbp_nonrobust$GxE.pval[maf_filter], 
+            plotTitle=paste0("Non-robust (lambda = ", 
+                             gControl(fat_sbp_nonrobust$GxE.pval[maf_filter])))
+make_qqplot(fat_sbp_robust$GxE.pval[maf_filter], 
+            plotTitle=paste0("Robust (lambda = ", 
+                             gControl(fat_sbp_robust$GxE.pval[maf_filter])))
+```

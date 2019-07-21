@@ -1,0 +1,657 @@
+---
+title: Genetic scores for saturated fat response prediction
+output: pdf_document
+---
+
+```{r setup, include=F}
+knitr::opts_chunk$set(echo=F, cache.path="../cache/sfa_ldl_models/",
+                      fig.path="../output/figures/sfa_ldl_models/")
+suppressMessages(silent <- lapply(
+  c("knitr", "tidyverse", "cowplot", "doParallel", "kableExtra",
+    "glmnet"), library, character.only=T))
+```
+
+```{r load-metadata, message=F}
+# raw_phenos_fhs <- read_csv("../data/processed/metaData_fhs.csv")
+raw_phenos_fhs <- read_csv("../data/processed/metadata_fhs.csv")
+
+raw_phenos_whi <- read_csv("../data/processed/metadata_whi.csv", 
+                           col_types=cols(sex="c", lipid_med="l", dm_trial="l",
+                                          dm_intervention="l"))
+
+raw_phenos_mesa <- read_csv("../data/processed/metadata_mesa.csv")
+
+raw_phenos_bprhs <- read_csv("../data/processed/metadata_bprhs.csv")
+bprhs_id_link <- read_csv("../data/raw/bprhs/admin/BPRHS_id_link.csv")
+```
+
+```{r clean-metadata, message=F}
+phenos_fhs <- raw_phenos_fhs %>%
+  filter(lipid_med_5 == F) %>%
+  mutate(ldl=ldl_5, bmi=bmi_5, sfa_pct=sfa_pct_5, pufa=pufa_pct_5, age=age_5,
+         subjID=paste0("fhs_", subjID))
+
+phenos_whi <- raw_phenos_whi %>%
+  mutate(ht_med=as.logical(ht_med),
+         ldl=ifelse(lipid_med, ldl / 0.75, ldl),
+         glu=ifelse(dm_med, glu / 0.75, glu),
+         sbp=ifelse(ht_med, sbp + 15, sbp)) %>%
+  filter(
+    !is.na(sbp),
+    race == "black"
+         # ht_med == F | is.na(ht_med)
+         ) %>%
+  mutate(
+    # subjID=paste0("whi_", subjID),
+    logf2c=log((sfa + mufa + pufa) / carb))
+
+phenos_long <- phenos_whi %>%  
+  mutate(arm=ifelse(dm_intervention, "intervention", "control")) %>%
+  group_by(subjID, age, race, sex, dm_trial, arm) %>%
+  filter(n() > 1) %>%
+  arrange(visit_year) %>%
+  summarise(baseline_bmi=bmi[1],
+            baseline_ldl=ldl[1],
+            baseline_hdl=hdl[1],
+            baseline_tg=tg[1],
+            baseline_glu=glu[1],
+            baseline_sbp=sbp[1],
+            baseline_sfa_pct=sfa_pct[1],
+            baseline_logf2c=logf2c[1],
+            baseline_chol=chol[1],
+            delta_bmi=bmi[n()] - bmi[1],
+            delta_ldl=ldl[n()] - ldl[1],
+            delta_hdl=hdl[n()] - hdl[1],
+            delta_chol=chol[n()] - chol[1],
+            delta_tg=tg[n()] - tg[1],
+            delta_glu=glu[n()] - glu[1],
+            delta_sbp=sbp[n()] - sbp[1],
+            delta_hsCRP=hsCRP[n()] - hsCRP[1],
+            delta_sfa_pct=sfa_pct[n()] - sfa_pct[1],
+            delta_pufa_pct=pufa_pct[n()] - pufa_pct[1],
+            delta_palmitic_pct=palmitic_pct[n()] - palmitic_pct[1],
+            delta_logf2c=logf2c[n()] - logf2c[1]) %>%
+  ungroup()
+
+phenos_mesa <- raw_phenos_mesa %>%
+  mutate(race=c("white", "asian", "black", "hispanic")[race],
+         sfa=sfa_pct,
+         pufa=pufa_pct,
+         subjID=paste0("mesa_", subjID))
+phenos_mesa_white <- phenos_mesa %>%
+  filter(race == "white")
+
+phenos_bprhs <- raw_phenos_bprhs %>%
+  mutate(lipid_med=as.logical(lipid_med))
+```
+
+```{r add-genotypes}
+# system.time(a <- bigmemory::read.big.matrix("../data/processed/whi_ldl_suggestive.raw", 
+#                                             has.row.names=T, type="double"))
+
+# system.time(whi_genotypes <- read_tsv("../data/processed/whi_n3tg_response.raw"))
+# saveRDS(whi_genotypes, "../data/processed/whi_n3tg_response.rds", compress=F)
+whi_genotypes <- readRDS("../data/processed/whi_ldl_suggestive.rds") %>%
+  rename(sampleID=IID) %>%
+  select(-FID, -PAT, -MAT, -SEX, -PHENOTYPE)
+
+whi_sample_to_subject <- read_tsv("../data/raw/whi/sample_info.txt", skip=15) %>%
+  rename(sampleID=SampleID, subjID=SubjectID) %>%
+  select(sampleID, subjID)
+
+baseline_data <- phenos_whi %>%
+  filter(visit_year == 0) %>%
+  inner_join(whi_sample_to_subject, by="subjID") %>%
+  inner_join(whi_genotypes, by="sampleID")
+
+longdata <- phenos_long %>%
+  inner_join(whi_sample_to_subject, by="subjID") %>%
+  inner_join(whi_genotypes, by="sampleID")
+```
+
+# Prediction performance for delta * delta
+
+```{r elastic-net}
+genotyped_snps <- select(baseline_data, contains("rs")) %>%
+  select_if(function(x) any(is.na(x))) %>%
+  names()
+baseline_data_imputed <- mutate_at(
+  baseline_data, genotyped_snps, function(x) ifelse(is.na(x), median(x, na.rm=T), x))
+
+traindata <- filter(baseline_data_imputed, dm_trial == F) %>%
+  # filter(race == "white") %>%
+  filter(!is.na(sbp), logf2c < 1)
+  # filter(!is.na(glu), !is.na(ldl), !is.na(hdl), !is.na(tg), !is.na(hsCRP), !is.na(bmi), logf2c < 1)
+# traindata$ldl_res <- lm(ldl ~ age + bmi, data=traindata)$residuals
+# traindata <- traindata %>%
+#   mutate(
+#     qLDL=cut(ldl, quantile(ldl, c(0, 0.49, 0.51, 1)),
+#              include.lowest=T, labels=c("low", "medium", "high")),
+#     qGLU=cut(glu, quantile(glu, c(0, 0.4, 0.6, 1)),
+#              include.lowest=T, labels=c("low", "medium", "high")),
+#     qSFA=cut(sfa_pct, quantile(sfa_pct, c(0, 0.4, 0.6, 1)),
+#              include.lowest=T, labels=c("low", "medium", "high")),
+#     binary=case_when(qLDL == "low" & qSFA == "low" ~ 1,
+#                      qLDL == "high" & qSFA == "high" ~ 1,
+#                      qLDL == "low" & qSFA == "high" ~ 0,
+#                      qLDL == "high" & qSFA == "low" ~ 0,
+#                      TRUE ~ as.numeric(NA)),
+#     PC1=prcomp(.[c("glu", "ldl", "hdl", "tg", "hsCRP", "bmi")], scale.=T)$x[,1],
+#     product=scale(sfa_pct) * scale(chol),
+#     # product=ifelse(qSFA == "low", scale(log(ldl)) * -1, ifelse(qSFA == "high", scale(log(ldl)), as.numeric(NA))),
+#     product_INT=qnorm((rank(product, na.last="keep") - 0.5) / sum(!is.na(product)))
+#   )
+testdata <- filter(baseline_data_imputed, dm_trial == T) %>%
+  filter(!is.na(sbp))
+  # filter(!is.na(glu), !is.na(ldl), !is.na(hdl), !is.na(tg), !is.na(hsCRP))
+  # mutate(
+  #   qLDL=cut(ldl, quantile(ldl, c(0, 0.49, 0.51, 1)),
+  #            include.lowest=T, labels=c("low", "medium", "high")),
+  #   qSFA=cut(sfa_pct, quantile(sfa_pct, c(0, 0.49, 0.51, 1)), 
+  #            include.lowest=T, labels=c("low", "medium", "high")),
+  #   binary=case_when(qLDL == "low" & qSFA == "low" ~ 1,
+  #                    qLDL == "high" & qSFA == "high" ~ 1,
+  #                    qLDL == "low" & qSFA == "high" ~ 0,
+  #                    qLDL == "high" & qSFA == "low" ~ 0,
+  #                    TRUE ~ as.numeric(NA)),
+  #   # PC1=as.vector(as.matrix(.[c("glu", "ldl", "hdl", "tg", "hsCRP")]) %*% d$rotation[, 1]),
+  #   # product=scale(sfa_pct) * scale(PC1),
+  #   # product=ifelse(qSFA == "low", scale(log(ldl)) * -1, ifelse(qSFA == "high", scale(log(ldl)), as.numeric(NA))),
+  #   product_INT=qnorm((rank(product, na.last="keep") - 0.5) / sum(!is.na(product))))
+
+# X <- as.matrix(select(traindata, contains("rs")))
+# y <- traindata$product_INT
+# cl <- makeForkCluster(4)
+# registerDoParallel(cl)
+# a <- foreach(x=iter(X, by="col"), .combine=rbind,
+#                          .packages=c("broom")) %dopar%
+#   tidy(lm(y ~ x))[2, ]
+# set.seed(1)
+# system.time(glm_fit <- cv.glmnet(X[!is.na(y), normal$p.value < 0.05], y[!is.na(y)], alpha=0.5, 
+#                                  # family="binomial",
+#                                  nfolds=3, parallel=T))
+# sum(coef(glm_fit) != 0)
+# stopCluster(cl)
+# 
+# testdata$testscore <- predict(glm_fit, s="lambda.1se",
+#                               as.matrix(testdata[, colnames(X)[a$p.value < 0.05]]), type="response")
+# broom::tidy(glm(binary ~ testscore, data=testdata, family="binomial"))
+# 
+# longdata_imputed$testscore <- predict(glm_fit, s="lambda.1se", 
+#                               as.matrix(longdata_imputed[, colnames(X)[a$p.value < 0.05]]), type="response")
+# broom::tidy(glm(delta_ldl ~ testscore * delta_sfa_pct, data=longdata_imputed, family="gaussian"))
+
+
+
+INT <- function(x) qnorm((rank(x, na.last="keep") - 0.5) / sum(!is.na(x)))
+
+winsorize <- function(x) {
+  
+}
+
+make_qqplot <- function(p_vec, plotTitle="Title") {
+  p_vec <- p_vec[!is.na(p_vec)]
+  qqplot(-log10(1:length(p_vec) / length(p_vec)), -log10(p_vec), pch=".", 
+         main=plotTitle, xlab="Expected (-logP)", ylab="Observed (-logP)")
+  abline(0, 1, col="red")
+}
+
+# X <- as.matrix(select(traindata, contains("rs")))
+# y <- INT(scale(traindata$sfa_pct) * scale(traindata$ldl))
+# normal_ldl <- foreach(x=iter(X, by="col"), .combine=rbind,
+#                   .packages=c("broom")) %dopar%
+#   tidy(lm(y ~ x))[2, ]
+# y <- INT(scale(traindata$sfa_pct) * scale(traindata$glu))
+# normal_chol <- foreach(x=iter(X, by="col"), .combine=rbind,
+#                   .packages=c("broom")) %dopar%
+#   tidy(lm(y ~ x))[2, ]
+# # sign_based <- foreach(x=iter(X, by="col"), .combine=rbind,
+# #                       .packages=c("broom")) %dopar%
+# #   tidy(glm(pmax(0, sign(y)) ~ x, family="binomial"))[2, ]
+# # pc_based <- foreach(x=iter(X, by="col"), .combine=rbind,
+# #                     .packages=c("broom")) %dopar%
+# #   tidy(lm(y ~ x))[2, ]
+# sbp <- foreach(x=iter(X, by="col"), .combine=rbind,
+#                .packages=c("broom")) %dopar%
+#   tidy(lm(y ~ x))[2, ]
+# d <- foreach(x=iter(X, by="col"), .combine=rbind,
+#              .packages=c("broom")) %dopar%
+#   tidy(lm(log(ldl) ~ x * scale(sfa_pct), data=traindata))[4, ]
+```
+
+```{r elastic-net-delta}
+genotyped_snps <- select(longdata, contains("rs")) %>%
+  select_if(function(x) any(is.na(x))) %>%
+  names()
+longdata_imputed <- mutate_at(
+  longdata, genotyped_snps, function(x) ifelse(is.na(x), median(x, na.rm=T), x))
+
+# traindata <- filter(longdata_imputed, arm == "control") %>%
+#   mutate(product=scale(delta_sfa_pct) * scale(delta_sbp),
+#          product=qnorm((rank(product, na.last="keep") - 0.5) / sum(!is.na(product)))) %>%
+#   filter(!is.na(product))
+# testdata <- filter(longdata_imputed, arm == "intervention") %>%
+#   mutate(product=scale(delta_sfa_pct) * scale(delta_sbp))
+# 
+# X <- as.matrix(select(traindata, contains("rs")))
+# y <- traindata$product
+# glm_fit <- cv.glmnet(X, y, alpha=0.5, nfolds=3)
+# sum(coef(glm_fit) != 0)
+# 
+# f <- foreach(x=iter(colnames(X)), .combine=rbind,
+#              .packages=c("broom")) %dopar%
+#   tidy(lm(delta_ldl ~ longdata_imputed[[x]] * arm, data=longdata_imputed))[4, ]
+# g <- foreach(x=iter(colnames(X)), .combine=rbind,
+#              .packages=c("broom")) %dopar%
+#   tidy(lm(delta_ldl ~ longdata_imputed[[x]] * arm + baseline_ldl, data=longdata_imputed))[5, ]
+```
+
+```{r direct-comparisons}
+pc_vars <- c("ldl", "hdl", "glu", "tg", "bmi")
+pca_fit <- prcomp(
+  select(traindata, pc_vars) %>% mutate_all(log),
+  scale.=T
+)
+traindata$pc1 <- as.vector(
+  scale(traindata[, pc_vars]) %*%
+  pca_fit$rotation[, 1]
+)
+testdata$pc1 <- as.vector(
+  scale(testdata[, pc_vars]) %*%
+  pca_fit$rotation[, 1]
+)
+longdata_imputed <- longdata_imputed %>%
+  mutate(baseline_pc1=as.vector(scale(.[, paste0("baseline_", pc_vars)]) %*% pca_fit$rotation[, 1]),
+         delta_pc1=as.vector(scale(.[, paste0("delta_", pc_vars)]) %*% pca_fit$rotation[, 1]))
+
+X <- as.matrix(select(traindata, contains("rs")))
+y <- INT(scale(traindata$logf2c) * scale(log(traindata$ldl)))
+ldl_marginal <- foreach(x=iter(X, by="col"), .combine=rbind,
+                  .packages=c("broom")) %dopar%
+  tidy(lm(log(ldl) ~ x, data=traindata))[2, ]
+
+# GWAS (ldl SNPs only) for SFA * ldl produce in non-DM
+X <- as.matrix(select(traindata, contains("rs")))
+y <- INT(scale(traindata$logf2c) * scale(log(traindata$ldl)))
+ldl_cs_nondm <- foreach(x=iter(X, by="col"), .combine=rbind,
+                  .packages=c("broom")) %dopar%
+  tidy(lm(y ~ x))[2, ]
+
+X <- as.matrix(select(traindata, contains("rs")))
+y <- log(traindata$ldl)
+ldl_cs_nondm_int <- foreach(x=iter(X, by="col"), .combine=rbind,
+                  .packages=c("broom")) %dopar%
+  tidy(lm(y ~ x * log(traindata$logf2c)))[4, ]
+
+X <- as.matrix(select(traindata, contains("rs")))
+y <- log(traindata$ldl)
+ldl_cs_nondm_int_adj <- foreach(x=iter(X, by="col"), .combine=rbind,
+                  .packages=c("broom")) %dopar%
+  tidy(lm(y ~ x * log(traindata$logf2c) + age + ldl, data=traindata))[6, ]
+
+X <- as.matrix(select(traindata, contains("rs")))
+y <- INT(scale(traindata$logf2c) * scale(log(traindata$ldl)))
+ldl_cs_nondm_bladj <- foreach(x=iter(X, by="col"), .combine=rbind,
+                  .packages=c("broom")) %dopar%
+  tidy(lm(y ~ x + ldl, data=traindata))[2, ]
+
+# GWAS (ldl SNPs only) for SFA * ldl produce in non-DM
+X <- as.matrix(select(testdata, contains("rs")))
+y <- INT(scale(testdata$logf2c) * scale(log(testdata$ldl)))
+ldl_cs_dm <- foreach(x=iter(X, by="col"), .combine=rbind,
+                  .packages=c("broom")) %dopar%
+  tidy(lm(y ~ x))[2, ]
+
+X <- as.matrix(select(testdata, contains("rs")))
+y <- INT(scale(testdata$logf2c) * scale(log(testdata$ldl)))
+ldl_cs_dm_bladj <- foreach(x=iter(X, by="col"), .combine=rbind,
+                  .packages=c("broom")) %dopar%
+  tidy(lm(y ~ x + ldl, data=testdata))[2, ]
+
+# GWAS (ldl SNPs only) for SFA * ldl produce in non-DM
+myData <- longdata_imputed %>%
+  filter(race == "white") %>%
+  filter(dm_trial == T)
+delta_sfa <- foreach(x=iter(as.matrix(select(myData, contains("rs"))), by="col"), .combine=rbind,
+             .packages=c("broom")) %dopar%
+  tidy(lm(INT(delta_ldl) ~ x * delta_logf2c, data=myData))[4, ]
+
+myData <- longdata_imputed %>%
+  filter(race == "white") %>%
+  filter(dm_trial == T, arm == "control")
+delta_sfa_control <- foreach(x=iter(as.matrix(select(myData, contains("rs"))), by="col"), .combine=rbind,
+             .packages=c("broom")) %dopar%
+  tidy(lm(INT(delta_ldl) ~ x * delta_logf2c, data=myData))[4, ]
+
+myData <- longdata_imputed %>%
+  filter(race == "white") %>%
+  filter(dm_trial == T, arm == "intervention")
+delta_sfa_intervention <- foreach(x=iter(as.matrix(select(myData, contains("rs"))), by="col"),
+                                  .combine=rbind,
+             .packages=c("broom")) %dopar%
+  tidy(lm(INT(delta_ldl) ~ x * delta_logf2c, data=myData))[4, ]
+
+myData <- longdata_imputed %>%
+  filter(race == "white") %>%
+  filter(dm_trial == T, arm == "intervention")
+direct_effect_trial <- foreach(x=iter(as.matrix(select(myData, contains("rs"))), by="col"),
+                                  .combine=rbind,
+             .packages=c("broom")) %dopar%
+  tidy(lm(INT(delta_ldl) ~ x, data=myData))[2, ]
+
+# GWAS (ldl SNPs only) for interaction w/ arm
+myData <- longdata_imputed %>%
+  filter(race == "white") %>%
+  filter(dm_trial == T)
+delta_trial <- foreach(x=iter(as.matrix(select(myData, contains("rs"))), by="col"), .combine=rbind,
+             .packages=c("broom")) %dopar%
+  tidy(lm(INT(delta_ldl) ~ x * arm, data=myData))[4, ]
+
+myData <- longdata_imputed %>%
+  filter(race == "white") %>%
+  filter(dm_trial == T)
+delta_trial_bladj <- foreach(x=iter(as.matrix(select(myData, contains("rs"))), by="col"), .combine=rbind,
+             .packages=c("broom")) %dopar%
+  tidy(lm(INT(delta_ldl) ~ x * arm + baseline_ldl * arm, data=myData))[5, ]
+
+
+a <- list(ldl_marginal=ldl_marginal$estimate, 
+          ldl_cs_nondm=ldl_cs_nondm$estimate,
+          ldl_cs_nondm_bladj=ldl_cs_nondm_bladj$estimate,
+          ldl_cs_nondm_int=ldl_cs_nondm_int$estimate,
+          ldl_cs_nondm_int_adj=ldl_cs_nondm_int_adj$estimate,
+          ldl_cs_dm=ldl_cs_dm$estimate,
+          # ldl_cs_dm_bladj=ldl_cs_dm_bladj$estimate,
+          delta_trial=delta_trial$estimate,
+          delta_trial_bladj=delta_trial_bladj$estimate,
+          delta_sfa=delta_sfa$estimate,
+          delta_sfa_control=delta_sfa_control$estimate,
+          delta_sfa_intervention=delta_sfa_intervention$estimate,
+          direct_effect_trial=direct_effect_trial$estimate)
+b <- cor(data.frame(a), method="spearman", use="pairwise.complete.obs") %>%
+  as.data.frame() %>%
+  rownames_to_column() %>%
+  gather(key="colname", value=corr, -rowname) %>%
+  mutate(corr=ifelse(rowname == colname, NA, corr))
+
+ggplot(b, aes(x=rowname, y=colname, fill=corr)) +
+  geom_tile() +
+  scale_fill_gradient2() +
+  theme(axis.text.x=element_text(angle=50, hjust=1))
+
+
+# X <- as.matrix(select(traindata, contains("rs")))
+# y <- INT(scale(traindata$sfa_pct) * scale(traindata$glu))
+# glu_cs_nondm_int <- foreach(x=iter(X, by="col"), .combine=rbind,
+#                   .packages=c("broom")) %dopar%
+#   tidy(lm(log(glu) ~ x * sfa_pct, data=traindata))[4, ]
+```
+
+```{r specific-experiments}
+X <- as.matrix(select(traindata, contains("rs")))
+y <- INT(scale(traindata$sfa) * scale(log(traindata$ldl)))
+
+ldl_marginal <- foreach(x=iter(X, by="col"), .combine=rbind,
+                  .packages=c("broom")) %dopar%
+  tidy(lm(log(ldl) ~ x, data=traindata))[2, ]
+
+ldl_cs_nondm <- foreach(x=iter(X, by="col"), .combine=rbind,
+                  .packages=c("broom")) %dopar%
+  tidy(lm(y ~ x))[2, ]
+
+ldl_cs_nondm_int <- foreach(x=iter(X, by="col"), .combine=rbind,
+                  .packages=c("broom")) %dopar%
+  tidy(lm(log(ldl) ~ x * sfa, data=traindata))[4, ]
+
+ldl_cs_nondm_int_adj <- foreach(x=iter(X, by="col"), .combine=rbind,
+                  .packages=c("broom")) %dopar%
+  tidy(lm(log(ldl) ~ x * sfa + age + bmi, data=traindata))[6, ]
+
+myData <- longdata_imputed %>%
+  # filter(race == "white") %>%
+  filter(dm_trial == T, arm == "intervention")
+direct_effect_trial <- foreach(x=iter(as.matrix(select(myData, contains("rs"))), by="col"),
+                                  .combine=rbind,
+             .packages=c("broom")) %dopar%
+  tidy(lm(delta_ldl ~ x, data=myData))[2, ]
+
+myData <- longdata_imputed %>%
+  # filter(race == "white") %>%
+  filter(dm_trial == T)
+delta_trial <- foreach(x=iter(as.matrix(select(myData, contains("rs"))), by="col"), .combine=rbind,
+             .packages=c("broom")) %dopar%
+  tidy(lm(delta_ldl ~ x * arm, data=myData))[4, ]
+
+myData <- longdata_imputed %>%
+  # filter(race == "white") %>%
+  filter(dm_trial == T)
+delta_trial_bladj <- foreach(x=iter(as.matrix(select(myData, contains("rs"))), by="col"), .combine=rbind,
+             .packages=c("broom")) %dopar%
+  tidy(lm(delta_ldl ~ x * arm + baseline_ldl * arm, data=myData))[5, ]
+
+
+a <- list(ldl_marginal=ldl_marginal$estimate, 
+          ldl_cs_nondm=ldl_cs_nondm$estimate,
+          ldl_cs_nondm_int=ldl_cs_nondm_int$estimate,
+          ldl_cs_nondm_int_adj=ldl_cs_nondm_int_adj$estimate,
+          delta_trial=delta_trial$estimate,
+          delta_trial_bladj=delta_trial_bladj$estimate,
+          direct_effect_trial=direct_effect_trial$estimate)
+b <- cor(data.frame(a), method="spearman", use="pairwise.complete.obs") %>%
+  as.data.frame() %>%
+  rownames_to_column() %>%
+  gather(key="colname", value=corr, -rowname) %>%
+  mutate(corr=ifelse(rowname == colname, NA, corr))
+
+ggplot(b, aes(x=rowname, y=colname, fill=corr)) +
+  geom_tile() +
+  scale_fill_gradient2() +
+  theme(axis.text.x=element_text(angle=50, hjust=1))
+```
+
+
+```{r test-model}
+# a <- longdata_imputed %>%
+#   filter(dm_trial == T, arm == "control", !is.na(delta_chol), race=="white")
+# b <- as.matrix(select(a, contains("rs")))
+# d <- INT(scale(a$delta_ldl) * scale(a$delta_sfa_pct))
+a <- baseline_data_imputed %>%
+  filter(dm_trial == F, !is.na(ldl), !is.na(bmi))
+a$ldl_res <- augment(lm(log(ldl) ~ age + bmi, data=a))$.resid
+b <- as.matrix(select(a, contains("rs")))
+d <- INT(scale(a$ldl_res) * scale(a$sfa_pct))
+use_snps <- colnames(b)[ldl_cs_nondm$p.value < 0.1]
+glm_fit <- cv.glmnet(b[, use_snps], d, alpha=0.5, nfolds=3)
+print(sum(coef(glm_fit, s="lambda.min") != 0))
+# rf_data <- as.data.frame(cbind(y=d, b[, use_snps]))
+# rf_fit <- ranger(y ~ ., data=rf_data, num.trees=1000, 
+#                  write.forest=T)
+e <- longdata_imputed %>%
+  filter(dm_trial == T)
+f <- as.matrix(select(e, contains("rs")))
+g <- as.vector(predict(glm_fit, f[, use_snps], s="lambda.min"))
+# rf_pred <- predict(rf_fit, e)
+tidy(lm(delta_ldl ~ g * arm + baseline_ldl, data=e, subset=e$race == "white"))
+```
+
+
+<!--
+
+```{r whi-longitudinal, fig.asp=1.2}
+# intervention_plt_data <- scores_whi_control %>%
+#   mutate(score_quintile=cut(score,
+#                             breaks=quantile(.$fh_score, seq(0, 1, 0.25)),
+#                             # breaks=quantile(.$fh_score, c(0,0.3,0.6,1)),
+#                             labels=paste0("Q", 1:4),
+#                             include.lowest=T)) %>% 
+#   group_by(score_quintile) %>%
+#   summarise(delta=mean(delta_ldl),
+#             se=sd(delta_ldl) / sqrt(n()))
+
+whi_dm_cs <- inner_join(whi_scores, phenos_dm, by="subjID") %>%
+  filter(visit_year == 0) %>%
+  mutate(sfa_ldl_product=scale(sfa_pct) * scale(ldl),
+         f2c_ldl_product=scale(f2c) * scale(ldl),
+         sfa_sbp_product=scale(sfa_pct) * scale(sbp))
+
+whi_dm_long <- inner_join(whi_scores, phenos_dm_long, by="subjID") %>%
+  mutate(score_bucket=cut(score, 
+                          # breaks=4,
+                          breaks=quantile(score, seq(0, 1, length.out=5)),
+                          labels=seq(1, 4), include.lowest=T),
+         # score_bucket=cut(score, 3, labels=1:3),
+         delta_sfa_bucket=case_when(delta_sfa_pct < median(delta_sfa_pct) ~ "decreased",
+                                    delta_sfa_pct > 0 ~ "increased",
+                                    TRUE ~ as.character(NA)))
+whi_dm_long_plt_data <- whi_dm_long %>%
+  group_by(arm, score_bucket) %>%
+  summarise(mean_delta_ldl=mean(delta_ldl),
+            SD=sd(delta_ldl),
+            SE=SD / sqrt(n()))
+# whi_dm_long_plt_data_sfabucket <- whi_dm_long %>%
+#   group_by(delta_sfa_bucket, score_bucket) %>%
+#   summarise(mean_delta_ldl=mean(delta_ldl),
+#             SD=sd(delta_ldl),
+#             SE=SD / sqrt(n()))
+  
+by_assignment_plt <- ggplot(data=whi_dm_long_plt_data, aes(x=score_bucket)) +
+  geom_boxplot(data=whi_dm_long, aes(y=delta_ldl), outlier.shape=NA, alpha=0.25) +
+  geom_point(data=whi_dm_long, aes(x=score_bucket, y=delta_ldl),
+             alpha=0.3, position=position_jitter(width=0.3)) +
+  coord_cartesian(ylim=c(-100, 60)) +
+  facet_wrap(~arm)
+
+means_plus_ses_plt <- ggplot(data=whi_dm_long_plt_data, aes(x=score_bucket)) +
+  geom_point(data=whi_dm_long_plt_data, 
+             aes(x=score_bucket, y=mean_delta_ldl),
+             stat="identity") +
+  geom_errorbar(data=whi_dm_long_plt_data, 
+                aes(ymin=mean_delta_ldl - SE, ymax=mean_delta_ldl + SE), width=0) +
+  facet_wrap(~arm)
+
+# by_delta_plt <- ggplot(data=whi_dm_long_plt_data_sfabucket, aes(x=score_bucket)) +
+#   geom_point(aes(x=score_bucket, y=mean_delta_ldl),
+#              stat="identity") +
+#   geom_errorbar(aes(ymin=mean_delta_ldl - SE, ymax=mean_delta_ldl + SE), width=0) +
+#   # geom_boxplot(color="gray") +
+#   geom_point(data=whi_dm_long, aes(x=score_bucket, y=delta_ldl),
+#              alpha=0.2, position=position_jitter()) +
+#   coord_cartesian(ylim=c(-100, 60)) +
+#   facet_wrap(~delta_sfa_bucket)
+
+plot_grid(by_assignment_plt, means_plus_ses_plt, nrow=2)
+
+# need to make sure that there are >1 LDL measurement when taking differences
+```
+
+```{r TESTING-TESTING, fig.asp=1, eval=F}
+testlong <- function(filepath, rf) {
+  myscores <- parse_scorefile(filepath) %>%
+    rename(sampleID=subjID) %>%
+    inner_join(whi_sample_to_subject, by="sampleID") %>%
+    mutate(subjID=paste0("whi_", subjID))
+  
+  
+  my_whi_dm_long <- inner_join(myscores, phenos_dm_long, by="subjID") %>%
+    mutate(score_bucket=cut(score, 
+                            # breaks=4,
+                            breaks=quantile(score, seq(0, 1, length.out=5)),
+                            labels=seq(1, 4), include.lowest=T),
+           # score_bucket=cut(score, 3, labels=1:3),
+           delta_sfa_bucket=case_when(delta_sfa_pct < median(delta_sfa_pct) ~ "decreased",
+                                      delta_sfa_pct > 0 ~ "increased",
+                                      TRUE ~ as.character(NA)),
+           delta_rf=.[[rf]])
+  
+  print(summary(lm(delta_rf ~ arm * score, data=my_whi_dm_long))$coef)
+  # print(summary(lm(delta_rf ~ arm * race, data=my_whi_dm_long))$coef)
+  
+  # mod1 <- lm(delta_rf ~ arm * race, data=my_whi_dm_long)
+  # mod2 <- lm(delta_rf ~ arm * score + arm * race, data=my_whi_dm_long)
+  # print(anova(mod1, mod2))
+  
+  print(summary(lm(delta_rf ~ score, 
+                   data=filter(my_whi_dm_long, arm == "intervention")))$coef)
+  
+  my_whi_dm_long_plt_data <- my_whi_dm_long %>%
+    group_by(arm, score_bucket) %>%
+    summarise(mean_delta_rf=mean(delta_rf),
+              SD=sd(delta_rf),
+              SE=SD / sqrt(n()))
+  
+  by_assignment_plt <- ggplot(data=my_whi_dm_long_plt_data, aes(x=score_bucket)) +
+    geom_boxplot(data=my_whi_dm_long, aes(y=delta_rf), alpha=0.1) +
+    geom_point(data=my_whi_dm_long, aes(x=score_bucket, y=delta_rf),
+               alpha=0.3, position=position_jitter(width=0.3)) +
+    coord_cartesian(ylim=quantile(my_whi_dm_long$delta_rf, c(0.25, 0.75)) + 
+                      c(-1.5, 1.5) * IQR(my_whi_dm_long$delta_rf)) +
+    facet_wrap(~arm)
+  
+  means_plus_ses_plt <- ggplot(data=my_whi_dm_long_plt_data, aes(x=score_bucket)) +
+    geom_point(data=my_whi_dm_long_plt_data, 
+               aes(x=score_bucket, y=mean_delta_rf), 
+               stat="identity") +
+    geom_errorbar(data=my_whi_dm_long_plt_data, 
+                  aes(ymin=mean_delta_rf - SE, ymax=mean_delta_rf + SE), width=0) +
+    facet_wrap(~arm)
+  
+  plot_grid(by_assignment_plt, means_plus_ses_plt, nrow=2)
+}
+testlong("../data/processed/ldl/whi_scores.sscore", "delta_ldl")
+```
+
+```{r non-score-correlations}
+nonscore <- whi_dm_long %>%
+  select(delta_ldl, delta_sfa_pct, delta_f2c, delta_bmi, arm, baseline_sfa_pct, baseline_f2c)
+
+cor(model.matrix(~.-1, data=nonscore), method="spearman") %>%
+  heatmap(symm=T)
+```
+
+```{r whi-longitudinal-measured, eval=F}
+measured_plt_data <- full_data %>%
+  filter(subset %in% c("whi_intervention", "whi_control")) %>%
+  mutate(score_tertile=cut(stack_score,
+                           # breaks=quantile(.$stack_score, c(0, 0.33, 0.66, 1)),
+                           breaks=quantile(.$stack_score, c(0, 0.25, 0.5, 0.75, 1)),
+                           labels=paste0("Q", 1:4),
+                           include.lowest=T)) %>%
+  mutate(subset=ifelse(delta_sfa < 0, "decreased SFA", "didn't decrease SFA")) %>%
+  group_by(subset, score_tertile) %>%
+  summarise(delta=mean(delta_ldl),
+            se=sd(delta_ldl) / sqrt(n()))
+  
+ggplot(measured_plt_data, aes(x=score_tertile, y=delta)) +
+  geom_point() +
+  geom_errorbar(aes(ymin=delta - se, ymax=delta + se), width=0) +
+  facet_wrap(~subset)
+```
+
+```{r fhs-longitudinal-measured, eval=F}
+measured_plt_data <- full_data %>%
+  filter(subset %in% c("whi_intervention", "whi_control")) %>%
+  mutate(score_tertile=cut(stack_score,
+                           # breaks=quantile(.$stack_score, c(0, 0.33, 0.66, 1)),
+                           breaks=quantile(.$stack_score, c(0, 0.25, 0.5, 0.75, 1)),
+                           labels=paste0("Q", 1:4),
+                           include.lowest=T)) %>%
+  mutate(subset=ifelse(delta_sfa < 0, "decreased SFA", "didn't decrease SFA")) %>%
+  group_by(subset, score_tertile) %>%
+  summarise(delta=mean(delta_ldl),
+            se=sd(delta_ldl) / sqrt(n()))
+  
+ggplot(measured_plt_data, aes(x=score_tertile, y=delta)) +
+  geom_point() +
+  geom_errorbar(aes(ymin=delta - se, ymax=delta + se), width=0) +
+  facet_wrap(~subset)
+```
+
+```{r interaction-tests}
+print("Test for arm-score interaction in predicting delta_LDL:")
+summary(lm(delta_ldl ~ arm * score, data=whi_dm_long))$coef
+
+print("Same test, additionally adjusting for baseline LDL:")
+summary(lm(delta_ldl ~ arm * score + baseline_ldl, data=whi_dm_long))$coef
+```
+
+-->

@@ -1,0 +1,475 @@
+---
+title: Genetic scores for saturated fat response prediction
+output: pdf_document
+---
+
+```{r setup, include=F}
+knitr::opts_chunk$set(echo=F, cache.path="../cache/sfa_ldl/",
+                      fig.path="../output/figures/sfa_ldl/")
+suppressMessages(silent <- lapply(
+  c("knitr", "tidyverse", "cowplot", "parallel", "kableExtra"), library, character.only=T))
+```
+
+```{r load-metadata, message=F}
+# raw_phenos_fhs <- read_csv("../data/processed/metaData_fhs.csv")
+raw_phenos_fhs <- read_csv("../data/processed/metadata_fhs.csv")
+
+raw_phenos_whi <- read_csv("../data/processed/metadata_whi.csv", 
+                           col_types=cols(sex="c", lipid_med="l", dm_trial="l",
+                                          dm_intervention="l"))
+
+raw_phenos_mesa <- read_csv("../data/processed/metadata_mesa.csv")
+
+raw_phenos_bprhs <- read_csv("../data/processed/metadata_bprhs.csv")
+bprhs_id_link <- read_csv("../data/raw/bprhs/admin/BPRHS_id_link.csv")
+```
+
+```{r load-scores, message=F}
+# models <- c("fhs", "whi_white", "mesa_cau")
+# studies <- c("fhs", "whi_white", "mesa_cau")
+
+parse_scorefile <- function(filename) {
+  read_tsv(filename) %>%
+    rename(subjID=IID, score=SCORE1_AVG) %>%
+    select(subjID, score)
+}
+
+whi_sample_to_subject <- read_tsv("../data/raw/whi/sample_info.txt", skip=15) %>%
+  rename(sampleID=SampleID, subjID=SubjectID) %>%
+  select(sampleID, subjID)
+
+# whi_scores <- parse_scorefile("../data/processed/f2c_ldl_WIN/whi_scores.sscore") %>%
+whi_scores <- parse_scorefile("../data/processed/sfa_sbp/whi_scores.sscore") %>%
+  rename(sampleID=subjID) %>%
+  inner_join(whi_sample_to_subject, by="sampleID") %>%
+  mutate(subjID=paste0("whi_", subjID))
+```
+
+```{r clean-data, message=F}
+phenos_fhs <- raw_phenos_fhs %>%
+  filter(lipid_med_5 == F) %>%
+  mutate(ldl=ldl_5, bmi=bmi_5, sfa_pct=sfa_pct_5, pufa=pufa_pct_5, age=age_5,
+         subjID=paste0("fhs_", subjID))
+
+phenos_whi <- raw_phenos_whi %>%
+  mutate(ht_med=as.logical(ht_med)) %>%
+  filter(!is.na(sbp),
+         ht_med == F | is.na(ht_med)) %>%
+  mutate(subjID=paste0("whi_", subjID),
+         f2c=(sfa + mufa + pufa) / carb)
+phenos_whi_white <- phenos_whi %>%
+  filter(race == "white")
+phenos_nondm <- phenos_whi %>%
+  filter(dm_trial == F,
+         visit_year == 0)
+phenos_dm <- phenos_whi %>%
+  filter(dm_trial == T,
+         visit_year == 0)
+phenos_dm_long <- phenos_whi %>%  
+  filter(
+    # race == "white",  ## CURRENTLY WHITES ONLY!!!
+    dm_trial == T) %>%
+  mutate(arm=ifelse(dm_intervention, "intervention", "control")) %>%
+  group_by(subjID, age, race, sex, arm) %>%
+  filter(n() > 1) %>%
+  arrange(visit_year) %>%
+  summarise(baseline_bmi=bmi[1],
+            baseline_ldl=ldl[1],
+            baseline_tg=tg[1],
+            baseline_glu=glu[1],
+            baseline_sbp=sbp[1],
+            baseline_sfa_pct=sfa_pct[1],
+            baseline_f2c=f2c[1],
+            delta_bmi=bmi[n()] - bmi[1],
+            delta_ldl=ldl[n()] - ldl[1],
+            delta_tg=tg[n()] - tg[1],
+            delta_glu=glu[n()] - glu[1],
+            delta_sbp=sbp[n()] - sbp[1],
+            delta_sfa_pct=sfa_pct[n()] - sfa_pct[1],
+            delta_pufa_pct=pufa_pct[n()] - pufa_pct[1],
+            delta_palmitic_pct=palmitic_pct[n()] - palmitic_pct[1],
+            delta_f2c=f2c[n()] - f2c[1])
+# phenos_whi_intervention <- phenos_whi %>%
+#   filter(dm_trial == T,
+#          dm_intervention == T) %>%
+#   group_by(subjID, age, race, sex) %>%
+#   filter(!is.na(ldl),
+#          n() > 1) %>%
+#   arrange(visit_year) %>%
+#   summarise(baseline_ldl=ldl[1],
+#             baseline_sfa_pct=sfa_pct[1],
+#             baseline_f2c=f2c[1],
+#             delta_ldl=ldl[n()] - ldl[1],
+#             delta_sfa_pct=sfa_pct[n()] - sfa_pct[1],
+#             delta_f2c=f2c[n()] - f2c[1])
+# phenos_whi_control <- phenos_whi %>%
+#   filter(dm_trial == T,
+#          dm_intervention == F) %>%
+#   group_by(subjID, age, race, sex) %>%
+#   filter(!is.na(ldl),
+#          n() > 1) %>%
+#   arrange(visit_year) %>%
+#   summarise(baseline_ldl=ldl[1],
+#             baseline_sfa_pct=sfa_pct[1],
+#             baseline_f2c=f2c[1],
+#             delta_ldl=ldl[n()] - ldl[1],
+#             delta_sfa_pct=sfa_pct[n()] - sfa_pct[1],
+#             delta_f2c=f2c[n()] - f2c[1])
+
+phenos_mesa <- raw_phenos_mesa %>%
+  mutate(race=c("white", "asian", "black", "hispanic")[race],
+         sfa=sfa_pct,
+         pufa=pufa_pct,
+         subjID=paste0("mesa_", subjID))
+phenos_mesa_white <- phenos_mesa %>%
+  filter(race == "white")
+
+phenos_bprhs <- raw_phenos_bprhs %>%
+  mutate(lipid_med=as.logical(lipid_med))
+# scores_bprhs <- inner_join(phenos_bprhs, filter(all_scores, study == "bprhs"))
+```
+
+```{r load-scores-old, message=F, eval=F}
+models <- c("fhs", "whi_white", "mesa_cau")
+studies <- c("fhs", "whi_white", "mesa_cau")
+
+parse_scorefile <- function(filename) {
+  read_table(filename) %>%
+    rename(subjID=IID, score=SCORE) %>%
+    select(subjID, score)
+}
+
+md_combos <- expand.grid(model=models, study=studies, stringsAsFactors=F)
+all_scores_long <- map2_dfr(md_combos$model, md_combos$study, function(m, s) {
+  parse_scorefile(paste0("../data/processed/sfa/", s, "_scores_", m, "_model.profile")) %>%
+    mutate(model=m,
+           subset=s)
+})
+all_scores <- all_scores_long %>%
+  spread(key=model, value=score) %>%
+  mutate(study=case_when(subset == "fhs" ~ "fhs",
+                         subset == "whi_white" ~ "whi",
+                         subset == "mesa_cau" ~ "mesa")) %>%
+  mutate(own_score=case_when(subset == "fhs" ~ fhs,
+                             subset == "whi_white" ~ whi_white,
+                             subset == "mesa_cau" ~ mesa_cau)) %>%
+  mutate(subjID=ifelse(study != "bprhs", paste(study, subjID, sep="_"),
+                       bprhs_id_link$studyid[match(.$subjID, bprhs_id_link$nelid_b)]))
+```
+
+# Model intuition
+
+To develop a genetic risk score for "saturated fat responsiveness", the ideal dataset would be a large-scale dietary intervention either increasing of decreasing saturated fat, enabling a model to directly predict changes in a cardiovascular risk factor over the course of the intervention. However, we can create a noisy approximation of this model using cross-sectional data by instead using a product of SFA intake (centered) and some risk factor (centered) as the outcome. The intuition for this approach is based on the fact that we are ultimately trying to model the correlation between SFA and a risk factor, and correlations are defined mathematically as the expected value of a product of two variables.
+
+So, the model being used in each GWAS is the following: 
+$Y=\alpha g+X\beta+\epsilon$,
+where Y is the product of two standardized variables (SFA and LDL-C), g is a vector of genotype dosages at the SNP in question, and X is a matrix of covariates.
+
+# Simulations
+
+Strategy: for each simulation...
+
+1. Draw N genotypes from a binomial distribution (binom(2, maf)).
+2. Draw SFA intakes with a potential genotype effect ($N(\beta_{SFA}*g, 1)$).
+3. Draw LDL values with a direct genotype effect, a direct SFA effect, and a genotype-SFA interaction ($N(\beta_{LDL}*g+\beta_{SFA}*SFA+\beta_{int}*SFA*g, 1)$)).
+
+Repeated simulations (100) are then used to calculate power for each set of marameters using a linear model predicting $SFA_{scaled}*LDL_{scaled}$ from genotype.
+
+Default parameter values:
+
+* N = 5000
+* $\beta_{g\_SFA}$ = 0.1
+* $\beta_{g\_LDL}$ = 0.2
+* $\beta_{SFA\_LDL}$ = 0.1
+* $\beta_{int}$ = 1 * $\beta_{SFA\_LDL}$ (interaction effect magnitude is similar to the genotype main effect)
+
+```{r run-simulations, cache=1}
+N <- 10000
+maf <- 0.2
+
+beta_g_sfa <- 0.1
+beta_g_ldl <- 0.2
+beta_sfa_ldl <- 0.1
+beta_interaction <- 1 * beta_sfa_ldl
+
+g <- rbinom(N, 2, maf)
+sfa <- rnorm(N, g * beta_g_sfa, 1)
+ldl <- rnorm(N, g * beta_g_ldl + sfa * beta_sfa_ldl + 
+               (g - 2 * maf) * sfa * beta_interaction, 1)
+
+simulate_geno_pheno <- function(N=1000, maf=0.2,
+                                beta_g_sfa=0.1, beta_g_ldl=0.2,
+                                beta_sfa_ldl=0.1,
+                                beta_interaction=0.1,
+                                test_type="product") {
+  # Run a single simulation, drawing N genotypes and phenotype pairs
+  g <- rbinom(N, 2, maf)
+  sfa <- rnorm(N, g * beta_g_sfa, 1)
+  ldl <- rnorm(N, g * beta_g_ldl + sfa * beta_sfa_ldl + 
+                 (g - 2 * maf) * sfa * beta_interaction, 1)
+  if (test_type == "product") {
+    lm_fit <- lm(scale(sfa) * scale(ldl) ~ g)
+    summary(lm_fit)$coef["g", c("Estimate", "Pr(>|t|)")]
+  } else {
+    lm_fit <- lm(ldl ~ sfa * g)
+    summary(lm_fit)$coef["sfa:g", c("Estimate", "Pr(>|t|)")]
+  }
+}
+
+calc_power <- function(arglist, n_sims=100, alpha=5e-8) {
+  # tryCatch(sim_res <- sapply(1:n_sims, function(i) do.call(simulate_geno_pheno, arglist)),
+  #          error=function(e) print("AAAAAAA"))
+  sim_res <- sapply(1:n_sims, function(i) do.call(simulate_geno_pheno, arglist))
+  hits <- (sim_res["Estimate", ] > 0) & (sim_res["Pr(>|t|)", ] < alpha)
+  power <- sum(hits) / length(hits)
+  power
+}
+
+calc_power_interactions <- function(arglist, n_sims=100, alpha=5e-8) {
+  # tryCatch(sim_res <- sapply(1:n_sims, function(i) do.call(simulate_geno_pheno, arglist)),
+  #          error=function(e) print("AAAAAAA"))
+  sim_res <- sapply(1:n_sims, function(i) do.call(simulate_geno_pheno, c(arglist, list(test_type="int"))))
+  hits <- (sim_res["Estimate", ] > 0) & (sim_res["Pr(>|t|)", ] < alpha)
+  power <- sum(hits) / length(hits)
+  power
+}
+
+vary_N <- data.frame(N=c(1e3, 5e3, 1e4, 5e4),
+                     maf=0.2, beta_g_ldl=0.1, beta_int=0.1)
+vary_maf <- data.frame(maf=c(0.01, 0.05, 0.1, 0.2, 0.3, 0.4),
+                     N=5e3, beta_g_ldl=0.1, beta_int=0.1)
+vary_beta_g_ldl <- data.frame(beta_g_ldl=c(0.01, 0.05, 0.1, 0.2, 0.3, 0.4),
+                     N=5e3, maf=0.2, beta_int=0.1)
+vary_beta_int <- data.frame(beta_int=c(0.01, 0.05, 0.1, 0.2, 0.3, 0.4),
+                     N=5e3, maf=0.2, beta_g_ldl=0.1)
+param_variations <- bind_rows(list(N=vary_N, maf=vary_maf,
+                                   beta_g_ldl=vary_beta_g_ldl,
+                                   beta_int=vary_beta_int), .id="varied")
+
+powers <- param_variations %>%
+  rowwise() %>%
+  mutate(
+    power_nominal=calc_power(
+      list(N=N, maf=maf, beta_g_ldl=beta_g_ldl, beta_int=beta_int), alpha=0.05),
+    power_gw=calc_power(
+      list(N=N, maf=maf, beta_g_ldl=beta_g_ldl, beta_int=beta_int))
+  ) %>%
+  ungroup() %>%
+  mutate(var=case_when(varied == "N" ~ N,
+                       varied == "maf" ~ maf,
+                       varied == "beta_g_ldl" ~ beta_g_ldl,
+                       varied == "beta_int" ~ beta_int),
+         var=factor(var),
+         varied=factor(varied, levels=c("N", "maf", "beta_g_ldl", "beta_int")))
+```
+
+```{r negative-simulations}
+neg_sims_gw <- c(calc_power(list(beta_g_ldl=0.1, beta_g_sfa=0.1, beta_int=0)),
+                 calc_power(list(beta_g_ldl=0.3, beta_g_sfa=0.3, beta_int=0)),
+                 calc_power(list(beta_g_ldl=0.5, beta_g_sfa=0.5, beta_int=0)),
+                 calc_power(list(beta_g_ldl=0.5, beta_g_sfa=0.1, beta_int=0)))
+
+neg_sim_tbl <- data.frame(beta_g_ldl=c(0.1, 0.3, 0.5, 0.5),
+                          beta_g_sfa=c(0.1, 0.3, 0.5, 0.1),
+                          power_GW=neg_sims_gw)
+kable(neg_sim_tbl,
+      caption="Negative simulations: fraction of false positives when interaction beta is 0")
+```
+
+```{r run-simulations-old, cache=1, eval=F}
+simulate_geno_pheno <- function(N=1000, 
+                                mean_corr=0.1, sd_corr=0.1,
+                                mean_sfa=20, sd_sfa=5, 
+                                mean_ldl=120, sd_ldl=20, 
+                                maf=0.2, delta_p_per_sd=0.1) {
+  # Run a single simulation, drawing N phenotype pairs and N genotypes
+  corrs <- rnorm(N, mean_corr, sd_corr)
+  phenos <- sapply(corrs, function(corr) {
+    cov_i <- corr * sd_sfa * sd_ldl
+    V <- matrix(c(sd_sfa ** 2, cov_i, cov_i, sd_ldl ** 2), 2, 2)
+    tryCatch(mvnfast::rmvn(1, c(mean_sfa, mean_ldl), V),
+             error=function(e) c(NA, NA))
+  })
+  if (sum(is.na(phenos)) / length(phenos) > 0.05) {
+    print(">5% rmvn failed")
+    return(NA)}
+  phenos_df <- setNames(as.tibble(t(phenos)), c("sfa", "ldl"))
+  p_alt_vec <- maf + (delta_p_per_sd * scale(corrs))
+  p_alt_vec <- na.omit(p_alt_vec)
+  p_alt_vec[p_alt_vec < 0] <- 0
+  p_alt_vec[p_alt_vec > 1] <- 1
+  genos <- rbinom(length(p_alt_vec), 1, p_alt_vec) +
+    rbinom(length(p_alt_vec), 1, p_alt_vec)
+  summary(lm(scale(sfa) * scale(ldl) ~ genos,
+             data=phenos_df))$coef["genos", "Pr(>|t|)"]
+}
+
+get_pvals <- function(arglist, n_sims, alpha) {
+  tryCatch(pvec <- sapply(1:n_sims, function(i) do.call(simulate_geno_pheno, arglist)),
+           error=function(e) print("AAAAAAA"))
+  pvec
+}
+
+vary_N <- tibble(N=c(1e3, 5e3, 1e4, 5e4), sd_corr=0.1, maf=0.2, delta_p_per_sd=0.1,
+                     varied="N")
+vary_sd_corr <- tibble(N=5000, sd_corr=c(0.05, 0.1, 0.2, 0.3),
+                       maf=0.2, delta_p_per_sd=0.1, 
+                       varied="sd_corr")
+vary_maf <- tibble(N=5000, sd_corr=0.1, maf=c(0.1, 0.2, 0.3, 0.4), 
+                           delta_p_per_sd=0.1, varied="maf")
+vary_delta_p_per_sd <- tibble(N=5000, sd_corr=0.1, maf=0.2, 
+                           delta_p_per_sd=c(0.01, 0.05, 0.1, 0.5), 
+                           varied="delta_p_per_sd")
+params_explore <- bind_rows(vary_N, vary_sd_corr, vary_maf, vary_delta_p_per_sd)
+
+p_vecs <- with(params_explore, mcmapply(function (a,b,c,d) get_pvals(
+  list(N=a, sd_corr=b, maf=c, delta_p_per_sd=d), n_sims=100, alpha=0.05),
+  N, sd_corr, maf, delta_p_per_sd, mc.cores=4))
+```
+
+```{r show-simulations}
+ggplot(powers, aes(x=var, y=power_nominal)) +
+  geom_bar(stat="identity") +
+  facet_wrap(~varied, scales="free_x") +
+  labs(title="Power at nominal significance (alpha = 0.05)", 
+       x=NULL, y="Power")
+ggplot(powers, aes(x=var, y=power_gw)) +
+  geom_bar(stat="identity") +
+  facet_wrap(~varied, scales="free_x") +
+  labs(title="Power at genome-wide significance (alpha = 5e-8)", 
+       x=NULL, y="Power")
+```
+
+# Individual GWAS results
+
+GWAS model (as above): $Y=\alpha g+X\beta+\epsilon$
+
+* Y is the product of two standardized variables (SFA and LDL-C)
+    - SFA in units of g/day, normalized by total calories
+* g is a vector of genotype dosages at the SNP in question
+* X is a matrix of covariates
+
+Inclusion criteria:
+
+* White
+* No lipid medication use
+
+## FHS
+
+* N ~ 750 unrelated individuals
+* Covariates: age, sex, BMI, PUFA
+
+```{r fhs-plots}
+fhs_qq <- ggdraw() + draw_image("../data/processed/sfa_ldl/fhs_qq.png")
+fhs_man <- ggdraw() + draw_image("../data/processed/sfa_ldl/fhs_manhattan.png")
+plot_grid(fhs_qq, fhs_man, ncol=2)
+```
+
+## WHI
+
+* N ~ 5500
+* Covariates: age, BMI, PUFA, 5 ancestry principal components
+
+```{r whi-manhattan}
+whi_white_qq <- ggdraw() + 
+  draw_image("../data/processed/sfa_ldl/whi_white_qq.png")
+whi_white_man <- ggdraw() + 
+  draw_image("../data/processed/sfa_ldl/whi_white_manhattan.png")
+whi_black_qq <- ggdraw() + 
+  draw_image("../data/processed/sfa_ldl/whi_black_qq.png")
+whi_black_man <- ggdraw() + 
+  draw_image("../data/processed/sfa_ldl/whi_black_manhattan.png")
+whi_hispanic_qq <- ggdraw() + 
+  draw_image("../data/processed/sfa_ldl/whi_hispanic_qq.png")
+whi_hispanic_man <- ggdraw() + 
+  draw_image("../data/processed/sfa_ldl/whi_hispanic_manhattan.png")
+plot_grid(whi_white_qq, whi_white_man, 
+          whi_black_qq, whi_black_man,
+          whi_hispanic_qq, whi_hispanic_man,
+          nrow=3, ncol=2)
+```
+
+## MESA
+
+* N ~ 1300
+* Covariates: age, BMI, PUFA
+
+```{r mesa-manhattan}
+mesa_white_qq <- ggdraw() + 
+  draw_image("../data/processed/sfa_ldl/mesa_white_qq.png")
+mesa_white_man <- ggdraw() + 
+  draw_image("../data/processed/sfa_ldl/mesa_white_manhattan.png")
+mesa_black_qq <- ggdraw() + 
+  draw_image("../data/processed/sfa_ldl/mesa_black_qq.png")
+mesa_black_man <- ggdraw() + 
+  draw_image("../data/processed/sfa_ldl/mesa_black_manhattan.png")
+# mesa_hispanic_qq <- ggdraw() + 
+#   draw_image("../data/processed/sfa_ldl/mesa_hispanic_qq.png")
+# mesa_hispanic_man <- ggdraw() + 
+#   draw_image("../data/processed/sfa_ldl/mesa_hispanic_manhattan.png")
+# mesa_asian_qq <- ggdraw() +
+#   draw_image("../data/processed/sfa_ldl/mesa_asian_qq.png")
+# mesa_asian_man <- ggdraw() +
+#   draw_image("../data/processed/sfa_ldl/mesa_asian_manhattan.png")
+plot_grid(mesa_white_qq, mesa_white_man, 
+          mesa_black_qq, mesa_black_man,
+          # mesa_hispanic_qq, mesa_hispanic_man,
+          # mesa_asian_qq, mesa_asian_man,
+          nrow=2, ncol=2)
+```
+
+
+# Meta-analysis results
+
+Fixed-effects meta-analysis
+
+## Whites only
+
+WHI (not in diet mod. arm, white) + FHS + MESA (white)
+
+```{r meta-white-plots}
+white_meta_qq <- ggdraw() + draw_image("../data/processed/f2c_ldl/white_meta_qq.png")
+# white_meta_man <- ggdraw() + draw_image("../data/processed/f2c_ldl/white_meta_manhattan.png")
+# plot_grid(white_meta_qq, white_meta_man, ncol=2)
+white_meta_qq
+```
+
+## Non-whites
+
+WHI (not in diet mod. arm, black + hispanic) + MESA (black + hispanic + asian)
+
+```{r meta-nonwhite-plots}
+nonwhite_meta_qq <- ggdraw() + draw_image("../data/processed/f2c_ldl/nonwhite_meta_qq.png")
+nonwhite_meta_man <- ggdraw() + draw_image("../data/processed/f2c_ldl/nonwhite_meta_manhattan.png")
+plot_grid(nonwhite_meta_qq, nonwhite_meta_man, ncol=2)
+```
+
+## All races
+
+WHI (not in diet mod. arm, all races) + FHS + MESA (all) + BPRHS
+
+```{r meta-all-plots}
+all_meta_qq <- ggdraw() + draw_image("../data/processed/f2c_ldl/all_meta_qq.png")
+all_meta_man <- ggdraw() + draw_image("../data/processed/f2c_ldl/all_meta_manhattan.png")
+plot_grid(all_meta_qq, all_meta_man, ncol=2)
+```
+
+
+```{r}
+get_qq <- function(dv, rf, group) {
+  tryCatch({qq_path <- paste0("../data/processed/adj_set/", dv, "_", rf, "/", group, 
+                              "_meta_qq.png")
+  ggdraw() + draw_image(qq_path)
+  }, error=function(e) ggdraw())
+}
+
+mygrid <- expand.grid(dv=c("sfa", "f2c", "palm"),
+                      phen=c("ldl_R", "tg_R", "glu_R", "hsCRP_R", "sbp_R"),
+                      group=c("all", "whi", "white"),
+                      stringsAsFactors=F)
+mygrid$plt <- with(mygrid, pmap(list(dv, phen, group), get_qq))
+
+plot_grid(plotlist=mygrid$plt[mygrid$group=="white"], ncol=3)
+```
+
+

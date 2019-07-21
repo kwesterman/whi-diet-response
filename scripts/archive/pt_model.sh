@@ -1,24 +1,133 @@
 #!/bin/bash
 
-module load python/3.6.0
-module load plink/1.90b5
 
-# Preliminaries
-SUMSTATS=$1
-PLINKSET=$2
-OUT_PREFIX=$3
+module load plink
+module load plink2
 
-# Run clumping procedure (pruning + thresholding)
-plink --bfile $PLINKSET \
+DIR=$1
+SUMSTATS=$DIR/all_meta.res
+SNPANNO=../data/processed/snp_annotations/snp_annot_hg19_nodups.txt
+
+## Generate bed/bim/fam to allow use of --clump
+#plink2 --pfile ../data/processed/whi/whi \
+#	--keep ../data/processed/whi_DM_ids.txt \
+#	--hard-call-threshold 0.2 \
+#	--make-bed \
+#	--out ../data/processed/whi/whi_DM_tmp
+#
+#plink --bfile ../data/processed/whi/whi_DM_tmp \
+#	--update-chr $SNPANNO 1 3 \
+#	--update-map $SNPANNO 2 3 \
+#	--make-bed \
+#	--out ../data/processed/whi/whi_DM
+#
+#rm ../data/processed/whi/whi_DM_tmp*
+
+# Use clump to generate score weights
+plink --bfile ../data/processed/whi/whi_DM \
 	--clump $SUMSTATS \
-	--out $OUT_PREFIX
+	--clump-field 'P' \
+	--out $DIR/score_weights
+
 
 # Python wrangling to generate a P/T weights file
 python << EOF
 import pandas as pd
-clumps = pd.read_csv("$OUT_PREFIX.clumped", delim_whitespace=True)
+clumps = pd.read_csv("$DIR/score_weights.clumped", delim_whitespace=True)
 sum_stats = pd.read_csv("$SUMSTATS", delim_whitespace=True,
-			usecols=['SNP', 'A1', 'BETA'])
-weights = sum_stats[sum_stats.SNP.isin(clumps.SNP)]
-weights.to_csv("${OUT_PREFIX}_weights.txt", sep="\t", index=False)
+			usecols=['SNP', 'BETA'])
+snp_annot = (pd.read_csv("../data/processed/snp_annotations/snp_annot_hg19_nodups.txt",
+			sep="\t", header=None, names=['CHR', 'BP', 'SNP', 'REF', 'ALT', 'altname'])
+	     .filter(['SNP', 'ALT']))
+weights = (sum_stats[sum_stats.SNP.isin(clumps.SNP)]
+ 	   .merge(snp_annot, on="SNP")
+	   .filter(['SNP', 'ALT', 'BETA']))
+weights.to_csv("$DIR/score_weights.txt", sep="\t", index=False)
 EOF
+
+# Calculate scores for WHI
+plink2 --pfile ../data/processed/whi/whi \
+    --score $DIR/score_weights.txt 1 2 3 \
+    --out $DIR/whi_scores
+
+
+#### NOW REPEAT BUT WITH RANDOM EFFECTS ESTIMATES
+## Use clump to generate score weights
+#plink --bfile ../data/processed/whi/whi_DM \
+#	--clump $SUMSTATS \
+#	--clump-field 'P(R)' \
+#	--out $DIR/score_weights_RE
+#
+#
+## Python wrangling to generate a P/T weights file
+#python << EOF
+#import pandas as pd
+#clumps = pd.read_csv("$DIR/score_weights_RE.clumped", delim_whitespace=True)
+#sum_stats = pd.read_csv("$SUMSTATS", delim_whitespace=True,
+#			usecols=['SNP', 'BETA(R)'])
+#snp_annot = (pd.read_csv("../data/processed/snp_annotations/snp_annot_hg19_nodups.txt",
+#			sep="\t", header=None, names=['CHR', 'BP', 'SNP', 'REF', 'ALT', 'altname'])
+#	     .filter(['SNP', 'ALT']))
+#weights = (sum_stats[sum_stats.SNP.isin(clumps.SNP)]
+# 	   .merge(snp_annot, on="SNP")
+#	   .filter(['SNP', 'ALT', 'BETA(R)']))
+#weights.to_csv("$DIR/score_weights_RE.txt", sep="\t", index=False)
+#EOF
+#
+## Calculate scores for WHI
+#plink2 --pfile ../data/processed/whi/whi \
+#    --score $DIR/score_weights_RE.txt 1 2 3 \
+#    --out $DIR/whi_scores_RE
+
+
+## Same as above, but for WHI-only M-A results...
+#SUMSTATS_WHI=../data/processed/sfa_ldl/whi_meta.res
+#plink --bfile ../data/processed/whi/whi_DM \
+#	--clump $SUMSTATS_WHI \
+#	--clump-field 'P' \
+#	--out $DIR/whi_score_weights
+#
+#python << EOF
+#import pandas as pd
+#clumps = pd.read_csv("$DIR/whi_score_weights.clumped", delim_whitespace=True)
+#sum_stats = pd.read_csv("$SUMSTATS_WHI", delim_whitespace=True,
+#			usecols=['SNP', 'BETA'])
+#snp_annot = (pd.read_csv("../data/processed/snp_annotations/snp_annot_hg19_nodups.txt",
+#			sep="\t", header=None, names=['CHR', 'BP', 'SNP', 'REF', 'ALT', 'altname'])
+#	     .filter(['SNP', 'ALT']))
+#weights = (sum_stats[sum_stats.SNP.isin(clumps.SNP)]
+# 	   .merge(snp_annot, on="SNP")
+#	   .filter(['SNP', 'ALT', 'BETA']))
+#weights.to_csv("$DIR/whi_score_weights.txt", sep="\t", index=False)
+#EOF
+#
+## Calculate scores for WHI
+#plink2 --pfile ../data/processed/whi/whi \
+#    --score $DIR/whi_score_weights.txt 1 2 3 \
+#    --out $DIR/whi_scores_whi
+
+# White results
+SUMSTATS_WHITE=$DIR/white_meta.res
+plink --bfile ../data/processed/whi/whi_DM \
+	--clump $SUMSTATS_WHITE \
+	--clump-field 'P' \
+	--out $DIR/white_score_weights
+
+python << EOF
+import pandas as pd
+clumps = pd.read_csv("$DIR/white_score_weights.clumped", delim_whitespace=True)
+sum_stats = pd.read_csv("$SUMSTATS_WHITE", delim_whitespace=True,
+			usecols=['SNP', 'BETA'])
+snp_annot = (pd.read_csv("../data/processed/snp_annotations/snp_annot_hg19_nodups.txt",
+			sep="\t", header=None, names=['CHR', 'BP', 'SNP', 'REF', 'ALT', 'altname'])
+	     .filter(['SNP', 'ALT']))
+weights = (sum_stats[sum_stats.SNP.isin(clumps.SNP)]
+ 	   .merge(snp_annot, on="SNP")
+	   .filter(['SNP', 'ALT', 'BETA']))
+weights.to_csv("$DIR/white_score_weights.txt", sep="\t", index=False)
+EOF
+
+# Calculate scores for WHI
+plink2 --pfile ../data/processed/whi/whi \
+    --score $DIR/white_score_weights.txt 1 2 3 \
+    --out $DIR/whi_scores_white

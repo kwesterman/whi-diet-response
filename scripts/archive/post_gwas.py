@@ -36,9 +36,9 @@ res_annot = (res.set_index("SNP")
 if "meta" in res_file:
     full_N = np.max(res_annot.N)
     res_annot = (res_annot
-                 .query('N in [@full_N - 1, @full_N]')
-                 .filter(["SNP", "chr", "bp", "N", "P", "P(R)", "BETA",
-                          "BETA(R)", "Q", "I"]))
+                 .query('N == @full_N')
+                 .filter(["SNP", "chr", "bp", "REF", "ALT", 
+			  "N", "P", "P(R)", "BETA", "BETA(R)", "Q", "I"]))
     meta_res = res_annot.rename({'chr': 'CHR', 'bp': 'BP'}, axis=1)
     meta_res.to_csv(res_file.replace(".meta", ".res"), sep="\t", index=False)
     #res_annot['P'] = res_annot['P(R)']  # If want plots to reflect RE p-vals
