@@ -1,0 +1,688 @@
+---
+title: GWIS for dietary fat and CRFs in UKBB
+output: pdf_document
+---
+
+```{r setup, include=F}
+knitr::opts_chunk$set(echo=F, cache.path="../cache/ukbb_gwis/",
+                      cache.lazy=F,
+                      fig.path="../output/figures/fat_response_prediction/")
+suppressMessages(silent <- lapply(
+  c("knitr", "tidyverse", "GWASTools", "SNPRelate", "kableExtra", "foreach",
+    "broom", "doParallel"), 
+  library, character.only=T))
+```
+
+```{r prep}
+make_qqplot <- function(p_vec, plotTitle="Title") {
+  p_vec <- p_vec[!is.na(p_vec)]
+  qqplot(-log10(1:length(p_vec) / length(p_vec)), -log10(p_vec), pch=".", cex=5, 
+         main=plotTitle, xlab="Expected (-logP)", ylab="Observed (-logP)")
+  abline(0, 1, col="red")
+}
+
+gControl <- function(p_vals) {
+  # See van Iterson 2017 methods and/or Lehne 2015 code for details on genomic control for EWAS
+  # Below is modeled after Lehne 2015
+  lambda <- median(qchisq(p_vals, df=1, lower.tail=F), 
+                   na.rm=T) / qchisq(0.5, df=1)
+  round(lambda, 2)
+}
+
+outcome_transforms <- list(
+  bmi="logBMI",
+  sbp="logSBP",
+  hdl="logHDL",
+  tg="logTG",
+  glu="logGLU",
+  ldl="ldl"
+)
+
+pretty_rfs <- c(bmi="BMI", sbp="SBP", ldl="LDL-C", hdl="HDL-C", tg="TG", glu="Glucose")
+```
+
+```{r cardiogxe, message=F}
+cardio_gxe_2014 <- read_tsv("../data/raw/literature/cardio_gxe_catalog.txt", skip=2)
+cardio_gxe <- readxl::read_excel("../data/raw/literature/CardioGxE_update_20190606.xlsx")
+all_cardioGxE_snps <- unique(unlist(strsplit(cardio_gxe$SNP, split=", | or ")))
+write_lines(all_cardioGxE_snps, "../data/processed/all_CardioGxE_snps.txt")
+
+fat_terms <- c("fat, total", "high-fat", "low-fat", "dietary fat", 
+               "high-carbohydrate", "carbohydrate, percent")
+
+fat_gxe <- cardio_gxe %>% 
+  filter(`Interaction significance` == "significant interaction",
+         grepl(paste(fat_terms, collapse="|"), `Environmental factor`)
+         ) %>%
+  select(SNP, Gene, `Risk allele`,
+         `Environmental factor`, `Condition of environmental factor`,
+         Phenotype)
+
+rfs <- c("bmi", "sbp", "ldl", "hdl", "tg", "glu")
+
+rf_terms <- list(
+  bmi=c("delta body weight", "body weight", "weight", "BMI", "delta BMI"),
+  sbp=c("blood pressure"),
+  ldl=c("LDL-C", "cholesterol, total", "cholesterol:"),
+  hdl=c("HDL"),
+  tg=c("^triglyceride$", "delta triglyceride", "triglyceride:"),
+  glu=c("glucose, fasting", "glucose, plasma")
+)
+```
+
+```{r snp-sets, eval=F}
+fat_rf_snp_list <- lapply(rf_terms, function(terms) {
+  raw <- fat_gxe$SNP[grepl(paste(terms, collapse="|"), fat_gxe$Phenotype)]
+  unique(raw[raw %in% names(whi_rs_to_id)])
+})
+
+all_fat_snps <- unlist(strsplit(fat_gxe$SNP, split=","))
+all_fat_snps <- all_fat_snps[grepl("^rs", all_fat_snps)]
+all_fat_snps <- unique(all_fat_snps[all_fat_snps %in% names(whi_rs_to_id)])
+```
+
+# Power calculations
+
+Using Quanto tool, with the following assumptions:
+
+* Variance explained by genotype alone: 0.5% (single-SNP)
+* Binary environment w/ 50% prevalence, explaining 10% of variance
+* Additive model
+(Note: no effect of MAF here given that variances explained are specified.)
+
+```{r power-calcs}
+quanto_res <- data.frame(var_expl_GE=c(0.05, 0.1, 0.5, 1),
+                         nominal=c(14046, 7021, 1401, 699),
+                         suggestive=c(49488, 24737, 4936, 2461),
+                         genome_wide=c(70866, 35423, 7069, 3524))
+
+quanto_res %>%
+  setNames(c("GxE variance explained (%)", "N (nominal)", "N (suggestive)", 
+             "N (genome-wide)")) %>%
+  kable(booktabs=T, longtable=T,
+        caption="Sample size necessary to achieve power of 0.8")
+```
+
+# CardioGxE update
+
+String matches used to retrieve the appropriate set of dietary fat-related variables ("Environment variable" field) from CardioGxE: "fat, total", "high-fat", "low-fat", "dietary fat", "high-carbohydrate", "carbohydrate, percent"
+
+```{r cge-comparison}
+fat_gxe_2014 <- cardio_gxe_2014 %>% 
+  filter(`Interaction significance` == "significant interaction",
+         grepl(paste(fat_terms, collapse="|"), `Environmental factor`))
+
+fat_gxe_full <- cardio_gxe %>% 
+  filter(`Interaction significance` == "significant interaction",
+         grepl(paste(fat_terms, collapse="|"), `Environmental factor`))
+
+data.frame(Version=c("2014", "2019 Update"),
+           `\\# fat-related SNPs`=c(length(unique(fat_gxe_2014$SNP)),
+                                  length(unique(fat_gxe$SNP))),
+           `\\# publications with dietary fat interactions`=c(
+             length(unique(fat_gxe_2014$`PubMed ID`)),
+             length(unique(fat_gxe_full$`PubMed ID`)))) %>%
+  kable(booktabs=T, longtable=T,
+        caption="CardioGxE Update")
+```
+
+# UKBB GWIS results
+
+```{r load-ukbb-gwis, message=F, cache=1}
+my_crfs <- c(bmi="bmi", sbp="sbp", ldl="ldl", hdl="hdl", tg="tg", glu="glu")
+all_fat_snps <- unique(fat_gxe$SNP)
+
+crf_gwis_res <- lapply(my_crfs, function(rf) {
+  read_tsv(paste0("../data/processed/ukbb_res/", rf, "/fat_", rf, ".res"))
+})
+```
+
+```{r show-ukbb-plots}
+silent <- lapply(my_crfs, function(rf) {
+  # make_qqplot(crf_gwis_res[[rf]]$P, plotTitle=paste0("lambda = "))
+  # qqman::manhattan()
+  basename <- paste0("../data/processed/ukbb_res/", rf, "/fat_", rf)
+  qq <- grid::rasterGrob(png::readPNG(paste0(basename, "_qq.png")))
+  manhattan <- grid::rasterGrob(png::readPNG(paste0(basename, "_manhattan.png")))
+  gridExtra::grid.arrange(qq, manhattan, ncol=2)
+})
+```
+
+# CardioGxE replication in UKBB
+
+```{r ukbb-replication, message=F, cache=1}
+fat_rf_snp_list <- lapply(rf_terms, function(terms) {
+  raw <- fat_gxe$SNP[grepl(paste(terms, collapse="|"), fat_gxe$Phenotype)]
+  unique(raw)
+})
+
+crf_specific_res <- lapply(my_crfs, function(rf) {
+  fat_gxe %>%
+    filter(SNP %in% fat_rf_snp_list[[rf]]) %>%
+    distinct(SNP, .keep_all=T) %>%
+    inner_join(crf_gwis_res[[rf]])
+})
+
+ks_pvals_specific <- lapply(my_crfs, function(rf) {
+  round(ks.test(crf_specific_res[[rf]]$P, punif)$p.value, 3)
+})
+
+crf_allsnps_res <- lapply(setNames(my_crfs, my_crfs), function(rf) {
+  fat_gxe %>%
+    distinct(SNP, .keep_all=T) %>%
+    inner_join(crf_gwis_res[[rf]])
+})
+```
+
+```{r show-ukbb-replication}
+specific_rep_res_tbl <- crf_specific_res %>%
+  bind_rows(.id="rf") %>%
+  group_by(rf) %>%
+  summarise(num_replicated=sum(P < 0.05, na.rm=T),
+            num_available=n()) %>%
+  mutate(num_rf_assoc=unlist(lapply(fat_rf_snp_list[rf], length)),
+         # frac_replicated_spec=paste(num_replicated, "/", num_rf_assoc),
+         perc_replicated=round(num_replicated / num_available * 100),
+         frac_replicated_string=paste0(num_replicated, " / ", 
+                                       num_available, 
+                                       " (", perc_replicated, "%)"),
+         ks_pval=unlist(ks_pvals_specific[rf])) %>%
+  select(rf, frac_replicated_string, ks_pval)
+  
+all_rep_res_tbl <- crf_allsnps_res %>%
+  bind_rows(.id="rf") %>%
+  group_by(rf) %>%
+  summarise(num_replicated=sum(P < 0.05, na.rm=T),
+            num_available=n()) %>%
+  mutate(total_snps=length(all_fat_snps),
+         perc_replicated=round(num_replicated / num_available * 100),
+         frac_replicated_string=paste0(num_replicated, " / ", 
+                                       total_snps, 
+                                       " (", perc_replicated, "%)")) %>%
+  select(rf, frac_replicated_string)
+
+specific_rep_res_tbl %>%
+  inner_join(all_rep_res_tbl, by="rf", suffix=c(".spec", ".all")) %>%
+  select(CRF=rf, `Replication (CRF-specific)`=frac_replicated_string.spec,
+         `K-S p-value`=ks_pval, `Replication (all fat-associated SNPs)`=frac_replicated_string.all) %>%
+  kable(booktabs=T, longtable=T, caption="Replication of CardioGxE SNPs in UKBB w/ percentages")
+```
+
+# Performance of UKBB fat response scores
+
+```{r test-ukbb-scores, message=F, eval=F}
+white_dm_phenos <- read_delim("../data/processed/gen4/whi_white_DM_phenos.txt", 
+                        delim=" ") %>%
+  filter(dm_trial == T)
+black_dm_phenos <- read_delim("../data/processed/gen4/whi_black_DM_phenos.txt", 
+                        delim=" ") %>%
+  filter(dm_trial == T)
+hispanic_dm_phenos <- read_delim("../data/processed/gen4/whi_hispanic_DM_phenos.txt", 
+                        delim=" ") %>%
+  filter(dm_trial == T)
+
+# dm_phenos <- bind_rows(white_dm_phenos, black_dm_phenos, hispanic_dm_phenos)
+dm_phenos <- white_dm_phenos
+
+read_profile <- function(filename, df) {
+  read_table2(filename) %>%
+    select(IID, SCORE) %>%
+    right_join(dm_phenos, by=c("IID"="SampleID"))
+}
+
+get_model_results <- function(form, df, score_term, res_type="statistic") {
+  lm_fit <- lm(as.formula(form), data=df) %>%
+    tidy() %>%
+    filter(term == score_term)
+  lm_fit[[res_type]]
+}
+
+test_ukbb_score <- function(score_rf, test_rf=score_rf, res_type="statistic") {
+  scorefile <- paste0("../data/processed/ukbb_res/", score_rf, "/fat_", 
+                      score_rf, ".profile")
+  # scorefile <- paste0("../data/processed/gen6/fat_", 
+  #                     score_rf, "_nominal_whi_to_ukbb.profile")
+  # scorefile <- paste0("../data/processed/gen6/", score_rf, "_MA_1.profile")
+  if(!file.exists(scorefile)) return (NA)
+  score_df <- read_profile(scorefile)
+  delta_var <- paste0("delta_", test_rf)
+  direct_formula <- paste0(delta_var, " ~ SCORE")
+  bladj_formula <- paste0(delta_var, " ~ SCORE + baseline_", test_rf)
+  interaction_formula <- paste0(delta_var, " ~ SCORE * dm_intervention")
+  data.frame(direct=get_model_results(direct_formula, filter(score_df, dm_intervention == T), "SCORE", res_type),
+    direct_low_fat=get_model_results(
+      direct_formula, filter(score_df, dm_intervention == T, delta_fat < 0), "SCORE", res_type),
+    direct_bladj=get_model_results(bladj_formula, filter(score_df, dm_intervention == T), "SCORE", res_type),
+    interaction=get_model_results(interaction_formula, score_df, "SCORE:dm_interventionTRUE", res_type),
+    score_sd=sd(score_df$SCORE, na.rm=T))
+}
+
+fat_pct_binary_models <- tibble(rf=my_crfs) %>%
+  mutate(tstats=map(rf, test_ukbb_score),
+         pvals=map(rf, test_ukbb_score, res_type="p.value"),
+         betas=map(rf, test_ukbb_score, res_type="estimate"),
+         dummy=map(rf, test_ukbb_score))
+
+rf_units <- c(bmi="kg/m^2", sbp="mmHg", ldl="mg/dL", hdl="mg/dL", tg="mg/dL", glu="mg/dL")
+
+fat_pct_binary_models %>%
+  mutate(tstat=map_dbl(tstats, "direct"),
+         pval=map_dbl(pvals, "direct"),
+         beta=map_dbl(betas, "direct"),
+         score_sd=map_dbl(dummy, "score_sd")) %>%
+  # mutate(tstat=map_dbl(tstats, "interaction"),
+  #        pval=map_dbl(pvals, "interaction"),
+  #        beta=map_dbl(betas, "interaction"),
+  #        score_sd=map_dbl(dummy, "score_sd")) %>%
+  mutate(delta_per_SD=beta * score_sd,
+         negLogP=-log10(pval),
+         rf_units=rf_units[rf],
+         text_label=paste0(round(delta_per_SD, 2), " (", rf_units, ")"),
+         rf=pretty_rfs[rf]) %>%
+  ggplot(aes(x=1, y=rf, fill=negLogP)) +
+  geom_tile() +
+  geom_text(aes(label=text_label), size=4) +
+  scale_fill_gradient2(name="-log10(p)", high=scales::muted("red")) +
+  labs(subtitle="Risk factor changes in DM trial per SD\nincrease in responder score") +
+  theme(axis.title=element_blank(), axis.line=element_blank(),
+        axis.ticks=element_blank(), axis.text.x=element_blank(),
+        panel.background=element_blank())
+
+
+test_ukbb_score_sugg <- function(score_rf, test_rf=score_rf, res_type="statistic") {
+  scorefile <- paste0("../data/processed/ukbb_res/", score_rf, "/fat_", 
+                      score_rf, "_suggestive.profile")
+  if(!file.exists(scorefile)) return (NA)
+  score_df <- read_profile(scorefile)
+  delta_var <- paste0("delta_", test_rf)
+  direct_formula <- paste0(delta_var, " ~ SCORE")
+  bladj_formula <- paste0(delta_var, " ~ SCORE + baseline_", test_rf)
+  interaction_formula <- paste0(delta_var, " ~ SCORE * dm_intervention")
+  data.frame(direct=get_model_results(direct_formula, filter(score_df, dm_intervention == T), "SCORE", res_type),
+    direct_low_fat=get_model_results(
+      direct_formula, filter(score_df, dm_intervention == T, delta_fat < 0), "SCORE", res_type),
+    direct_bladj=get_model_results(bladj_formula, filter(score_df, dm_intervention == T), "SCORE", res_type),
+    interaction=get_model_results(interaction_formula, score_df, "SCORE:dm_interventionTRUE", res_type),
+    score_sd=sd(score_df$SCORE, na.rm=T))
+}
+
+fat_pct_binary_models_sugg <- tibble(rf=my_crfs) %>%
+  mutate(tstats=map(rf, test_ukbb_score_sugg),
+         pvals=map(rf, test_ukbb_score_sugg, res_type="p.value"),
+         betas=map(rf, test_ukbb_score_sugg, res_type="estimate"),
+         dummy=map(rf, test_ukbb_score_sugg))
+
+rf_units <- c(bmi="kg/m^2", sbp="mmHg", ldl="mg/dL", hdl="mg/dL", tg="mg/dL", glu="mg/dL")
+
+fat_pct_binary_models_sugg %>%
+  mutate(tstat=map_dbl(tstats, "direct"),
+         pval=map_dbl(pvals, "direct"),
+         beta=map_dbl(betas, "direct"),
+         score_sd=map_dbl(dummy, "score_sd")) %>%
+  mutate(delta_per_SD=beta * score_sd,
+         negLogP=-log10(pval),
+         rf_units=rf_units[rf],
+         text_label=paste0(round(delta_per_SD, 2), " (", rf_units, ")"),
+         rf=pretty_rfs[rf]) %>%
+  ggplot(aes(x=1, y=rf, fill=negLogP)) +
+  geom_tile() +
+  geom_text(aes(label=text_label), size=4) +
+  scale_fill_gradient2(name="-log10(p)", high=scales::muted("red")) +
+  labs(subtitle="Risk factor changes in DM trial per SD\nincrease in suggestive responder score") +
+  theme(axis.title=element_blank(), axis.line=element_blank(),
+        axis.ticks=element_blank(), axis.text.x=element_blank(),
+        panel.background=element_blank())
+```
+
+```{r cvd-outcomes-ukbb, message=F, eval=F}
+outcomes <- read_csv("../data/processed/outcomes_whi.csv")
+
+make_cvd_outcome_plot <- function(filename) {
+  score_df <- read_profile(filename) %>%
+    mutate(fat_down=delta_fat < 0)
+  score_df_with_outcomes <- inner_join(score_df, outcomes, by="subjID")
+  
+  score_subsets <- list(dm_int=filter(score_df_with_outcomes, dm_intervention == T),
+                        dm_ctrl=filter(score_df_with_outcomes, dm_intervention == F),
+                        fat_down=filter(score_df_with_outcomes, fat_down == T),
+                        fat_up=filter(score_df_with_outcomes, fat_down == F))
+  
+  glm_fits <- lapply(score_subsets, function(df) {
+    glm(formula=chd ~ SCORE + age + baseline_bmi + baseline_hdl + baseline_ldl + baseline_sbp,
+        data=df, family="binomial")
+  })
+  
+  # rf <- gsub(".*/ukbb_res/.*/fat_|profile", "", filename)
+  rf <- gsub(".*/|_MA_1.profile", "", filename)
+  plot_summs(glm_fits[[1]], glm_fits[[2]], glm_fits[[3]], glm_fits[[4]],
+             model.names=c("DM Intervention", "DM Control", "Fat reduced", "Fat increased"),
+             coefs="SCORE",
+             scale=T) +
+    # scale_y_discrete(labels=c(SCORE="Score", age="Age", baseline_bmi="Baseline BMI", 
+    #                           baseline_hdl="Baseline HDL", 
+    #                           baseline_ldl="Baseline LDL", 
+    #                           baseline_sbp="Baseline SBP")) +
+    labs(x="Logistic regression: log(OR) for CHD",
+         title=paste0("Regression for incident CHD in WHI DM participants: ", rf)) +
+    theme(legend.title=element_blank())
+}
+
+cvd_outcome_plots <- lapply(my_crfs, function(rf) {
+  list(
+    # full=make_cvd_outcome_plot(paste0("../data/processed/ukbb_res/", rf, "/fat_", 
+    #                                   rf, ".profile")),
+    full=make_cvd_outcome_plot(paste0("../data/processed/ukbb_res/", rf, "/fat_",
+                                      rf, ".profile")),
+    suggestive=make_cvd_outcome_plot(paste0("../data/processed/ukbb_res/", rf, "/fat_", 
+                                            rf, "_suggestive.profile")))
+})
+
+map(cvd_outcome_plots, "full")
+```
+
+```{r old-cvd-outcome-stuff, eval=F}
+# make_cvd_outcome_plot("../data/processed/ukbb_res/bmi/fat_bmi.profile")
+# make_cvd_outcome_plot("../data/processed/ukbb_res/hdl/fat_hdl.profile")
+# make_cvd_outcome_plot("../data/processed/ukbb_res/tg/fat_tg.profile")
+# make_cvd_outcome_plot("../data/processed/ukbb_res/bmi/fat_bmi_suggestive.profile")
+# make_cvd_outcome_plot("../data/processed/ukbb_res/hdl/fat_hdl_suggestive.profile")
+# make_cvd_outcome_plot("../data/processed/ukbb_res/tg/fat_tg_suggestive.profile")
+
+
+
+
+# hdl_score_df <- read_profile("../data/processed/ukbb_res/hdl/fat_hdl.profile") %>%
+#   mutate(fat_down=delta_fat < 0)
+# hdl_score_df_with_outcomes <- inner_join(hdl_score_df, outcomes, by="subjID")
+# 
+# library(jtools)
+# library(ggstance)
+# chd_glm <- hdl_score_df_with_outcomes %>%
+#   filter(dm_intervention == T) %>%
+#   glm(formula=chd ~ SCORE + age + baseline_bmi + baseline_hdl + baseline_ldl + baseline_sbp, family="binomial")
+# chd_glm_control <- hdl_score_df_with_outcomes %>%
+#   filter(dm_intervention == F) %>%
+#   glm(formula=chd ~ SCORE + age + baseline_bmi + baseline_hdl + baseline_ldl + baseline_sbp, family="binomial")
+# chd_glm_fatdown <- hdl_score_df_with_outcomes %>%
+#   filter(fat_down == T) %>%
+#   glm(formula=chd ~ SCORE + age + baseline_bmi + baseline_hdl + baseline_ldl + baseline_sbp, family="binomial")
+# chd_glm_fatup <- hdl_score_df_with_outcomes %>%
+#   filter(fat_down == F) %>%
+#   glm(formula=chd ~ SCORE + age + baseline_bmi + baseline_hdl + baseline_ldl + baseline_sbp, family="binomial")
+# 
+# plot_summs(chd_glm, chd_glm_control, chd_glm_fatdown, chd_glm_fatup,
+#            model.names=c("DM Intervention", "DM Control", "Fat reduced", "Fat increased"),
+#            scale=T) +
+#   geom_text(x=0.5, y=6, label="Predicts lower HDL\nwith fat reduction", size=3) +
+#   scale_y_discrete(labels=c(SCORE="Score", age="Age", baseline_bmi="Baseline BMI", 
+#                             baseline_hdl="Baseline HDL", 
+#                             baseline_ldl="Baseline LDL", 
+#                             baseline_sbp="Baseline SBP")) +
+#   labs(x="Logistic regression: log(OR) for CHD",
+#        title="Regression for incident CHD in WHI DM participants") +
+#   theme(legend.title=element_blank())
+# 
+# 
+# bmi_score_df <- read_profile("../data/processed/ukbb_res/bmi/fat_bmi.profile") %>%
+#   mutate(fat_down=delta_fat < 0)
+# bmi_score_df_with_outcomes <- inner_join(bmi_score_df, outcomes, by="subjID")
+# 
+# chd_glm <- bmi_score_df_with_outcomes %>%
+#   filter(dm_intervention == T) %>%
+#   glm(formula=chd ~ SCORE + age + baseline_bmi + baseline_hdl + baseline_ldl + baseline_sbp, family="binomial")
+# chd_glm_control <- bmi_score_df_with_outcomes %>%
+#   filter(dm_intervention == F) %>%
+#   glm(formula=chd ~ SCORE + age + baseline_bmi + baseline_hdl + baseline_ldl + baseline_sbp, family="binomial")
+# chd_glm_fatdown <- bmi_score_df_with_outcomes %>%
+#   filter(fat_down == T) %>%
+#   glm(formula=chd ~ SCORE + age + baseline_bmi + baseline_hdl + baseline_ldl + baseline_sbp, family="binomial")
+# chd_glm_fatup <- bmi_score_df_with_outcomes %>%
+#   filter(fat_down == F) %>%
+#   glm(formula=chd ~ SCORE + age + baseline_bmi + baseline_hdl + baseline_ldl + baseline_sbp, family="binomial")
+# 
+# plot_summs(chd_glm, chd_glm_control, chd_glm_fatdown, chd_glm_fatup,
+#            model.names=c("DM Intervention", "DM Control", "Fat reduced", "Fat increased"),
+#            scale=T) +
+#   geom_text(x=0.5, y=6, label="Predicts lower HDL\nwith fat reduction", size=3) +
+#   scale_y_discrete(labels=c(SCORE="Score", age="Age", baseline_bmi="Baseline BMI", 
+#                             baseline_hdl="Baseline HDL", 
+#                             baseline_ldl="Baseline LDL", 
+#                             baseline_sbp="Baseline SBP")) +
+#   labs(x="Logistic regression: log(OR) for CHD",
+#        title="Regression for incident CHD in WHI DM participants") +
+#   theme(legend.title=element_blank())
+# 
+# 
+# tg_score_df <- read_profile("../data/processed/ukbb_res/tg/fat_tg.profile") %>%
+#   mutate(fat_down=delta_fat < 0)
+# tg_score_df_with_outcomes <- inner_join(tg_score_df, outcomes, by="subjID")
+# 
+# chd_glm <- bmi_score_df_with_outcomes %>%
+#   filter(dm_intervention == T) %>%
+#   glm(formula=chd ~ SCORE + age + baseline_bmi + baseline_hdl + baseline_ldl + baseline_sbp, family="binomial")
+# chd_glm_control <- bmi_score_df_with_outcomes %>%
+#   filter(dm_intervention == F) %>%
+#   glm(formula=chd ~ SCORE + age + baseline_bmi + baseline_hdl + baseline_ldl + baseline_sbp, family="binomial")
+# chd_glm_fatdown <- bmi_score_df_with_outcomes %>%
+#   filter(fat_down == T) %>%
+#   glm(formula=chd ~ SCORE + age + baseline_bmi + baseline_hdl + baseline_ldl + baseline_sbp, family="binomial")
+# chd_glm_fatup <- bmi_score_df_with_outcomes %>%
+#   filter(fat_down == F) %>%
+#   glm(formula=chd ~ SCORE + age + baseline_bmi + baseline_hdl + baseline_ldl + baseline_sbp, family="binomial")
+# 
+# plot_summs(chd_glm, chd_glm_control, chd_glm_fatdown, chd_glm_fatup,
+#            model.names=c("DM Intervention", "DM Control", "Fat reduced", "Fat increased"),
+#            scale=T) +
+#   geom_text(x=0.5, y=6, label="Predicts lower HDL\nwith fat reduction", size=3) +
+#   scale_y_discrete(labels=c(SCORE="Score", age="Age", baseline_bmi="Baseline BMI", 
+#                             baseline_hdl="Baseline HDL", 
+#                             baseline_ldl="Baseline LDL", 
+#                             baseline_sbp="Baseline SBP")) +
+#   labs(x="Logistic regression: log(OR) for CHD",
+#        title="Regression for incident CHD in WHI DM participants") +
+#   theme(legend.title=element_blank())
+
+
+
+
+# library(survival)
+# chd_surv <- coxph(Surv(time_to_chd, chd) ~ scale(SCORE) + age,
+#                   data=sbp_score_df_with_outcomes,
+#       subset=hdl_score_df_with_outcomes$dm_intervention==T)
+#   # plot_coefs(scale=T)
+# 
+# plot_coefs(chd_glm, chd_surv, model.names=c("logistic", "survival"))
+```
+
+# Extra
+
+```{r examine-gwis, eval=F}
+# gwis_res <- read_tsv("../data/processed/gen4/sfa_pct_binary_logHDL_whi_white.res_annot")
+
+gwis_res_list <- lapply(setNames(rfs, rfs), function(rf) {
+  read_tsv(paste0("../data/processed/gen4/sfa_pct_binary_", rf, 
+                  "_whi_white.res_annot"))
+})
+
+# Perform FUMA analysis
+```
+
+```{r main-effect-prs, eval=F}
+ldl_gwas_res <- read_tsv("../data/raw/literature/ldl_gwas_ma_res_glgc.txt") %>%
+  mutate(chr=0,
+         bp=0,
+         A1=toupper(A1)) %>%
+  select(SNP=rsid, chr, bp, A1, BETA=beta, P=`P-value`) %>%
+  filter(!duplicated(SNP),
+         P < 0.05) %>%
+  write_tsv("../data/processed/gen4/scores/sfa_pct_binary_ldl_onlyME_sumstats.txt")
+
+hdl_gwas_res <- read_tsv("../data/raw/literature/hdl_gwas_ma_res_glgc.txt") %>%
+  mutate(chr=0,
+         bp=0,
+         A1=toupper(A1)) %>%
+  select(SNP=rsid, chr, bp, A1, BETA=beta, P=`P-value`) %>%
+  filter(!duplicated(SNP),
+         P < 0.05) %>%
+  write_tsv("../data/processed/gen4/scores/sfa_pct_binary_logHDL_onlyME_sumstats.txt")
+
+tg_gwas_res <- read_tsv("../data/raw/literature/tg_gwas_ma_res_glgc.txt") %>%
+  mutate(chr=0,
+         bp=0,
+         A1=toupper(A1)) %>%
+  select(SNP=rsid, chr, bp, A1, BETA=beta, P=`P-value`) %>%
+  filter(!duplicated(SNP),
+         P < 0.05) %>%
+  write_tsv("../data/processed/gen4/scores/sfa_pct_binary_logTG_onlyME_sumstats.txt")
+
+bmi_gwas_res <- read_delim("../data/raw/literature/Bmi.giant-ukbb.meta-analysis.combined.23May2018.HapMap2_only.txt", delim=" ") %>%
+  select(SNP, chr=CHR, bp=POS, A1=Tested_Allele, BETA, P) %>%
+  filter(P < 0.05) %>%
+  write_tsv("../data/processed/gen4/scores/sfa_pct_binary_logBMI_onlyME_sumstats.txt")
+  
+# ## SBP SUMMARY STATS NEED UPDATING ##
+# sbp_gwas_res <- read_csv("../data/raw/literature/2010-07-09663E-ICBP-summary-Nature.csv") %>%
+#   mutate(BETA=1,
+#          bp=0) %>%
+#   select(SNP=rsid, chr=chr.hg18, bp, A1=Tested_Allele, BETA, P) %>%
+#   filter(P < 0.05) %>%
+#   write_tsv("../data/processed/gen4/scores/sfa_pct_binary_logSBP_onlyME_sumstats.txt")
+
+glu_gwas_res <- read_tsv("../data/raw/literature/MAGIC_FastingGlucose.txt") %>%
+  mutate(chr=0,
+         bp=0) %>%
+  select(SNP=snp, chr, bp, A1=effect_allele, BETA=effect, P=pvalue) %>%
+  filter(P < 0.05) %>%
+  write_tsv("../data/processed/gen4/scores/sfa_pct_binary_logGLU_onlyME_sumstats.txt")
+```
+
+```{r score-setup-prod, eval=F}
+prod_rfs <- c("ldl", "hdl")
+
+prod_gwis_res_list <- lapply(setNames(prod_rfs, prod_rfs), function(rf) {
+  read_tsv(paste0("../data/processed/gen4/fat_", rf, "_prod",
+                  "_whi_white.res_annot"))
+})
+
+prod_output_sumstats <- function(rf) {
+  non_log_rf <- tolower(gsub("log", "", rf))
+  
+  print(gControl(prod_gwis_res_list[[rf]]$P))
+  
+  # All CardioGxE SNPs
+  prod_gwis_res_list[[rf]] %>%
+    filter(P < 0.05) %>%
+    filter(SNP %in% all_cardioGxE_snps) %>%
+    select(SNP, chr, bp, A1, BETA, P) %>%
+    write_tsv(paste0("../data/processed/gen4/scores/fat_",
+                     rf, "_prod_full_cge_sumstats.txt"))
+  
+  # Nominal SNPs
+  nominal_snps <- scan(paste0("../data/processed/whi_subsets/",
+                              non_log_rf, "_nominal_snps.txt"),
+                       what=character())
+  prod_gwis_res_list[[rf]] %>%
+    filter(P < 0.05) %>%
+    filter(SNP %in% nominal_snps) %>%
+    select(SNP, chr, bp, A1, BETA, P) %>%
+    write_tsv(paste0("../data/processed/gen4/scores/fat_",
+                     rf, "_prod_nominalME_sumstats.txt"))
+  
+  # Suggestive SNPs
+  suggestive_snps <- scan(paste0("../data/processed/whi_subsets/",
+                                 non_log_rf, "_suggestive_snps.txt"),
+                          what=character())
+  prod_gwis_res_list[[rf]] %>%
+    filter(P < 0.05) %>%
+    filter(SNP %in% suggestive_snps) %>%
+    select(SNP, chr, bp, A1, BETA, P) %>%
+    write_tsv(paste0("../data/processed/gen4/scores/fat_",
+                     rf, "_prod_suggestiveME_sumstats.txt"))
+  
+  # Genome-wide SNPs
+  gw_snps <- scan(paste0("../data/processed/whi_subsets/",
+                                 non_log_rf, "_gw_snps.txt"),
+                          what=character())
+  prod_gwis_res_list[[rf]] %>%
+    filter(P < 0.05) %>%
+    filter(SNP %in% gw_snps) %>%
+    select(SNP, chr, bp, A1, BETA, P) %>%
+    write_tsv(paste0("../data/processed/gen4/scores/fat_",
+                     rf, "_prod_gwME_sumstats.txt"))
+  
+  # All SNPs
+  prod_gwis_res_list[[rf]] %>%
+    filter(P < 0.05) %>%
+    select(SNP, chr, bp, A1, BETA, P) %>%
+    write_tsv(paste0("../data/processed/gen4/scores/fat_",
+                     rf, "_prod_all_sumstats.txt"))
+}
+
+lapply(prod_rfs, prod_output_sumstats)
+```
+
+# Sanity check
+
+```{r whi-sanity-check, message=F, eval=F}
+apoa5_snps <- unique(filter(cardio_gxe, Gene == "APOA5")$SNP)
+apoa5_snps <- apoa5_snps[apoa5_snps %in% names(whi_rs_to_id)]
+whi_apoa5_tg <- foreach(snp=whi_rs_to_id[apoa5_snps],
+             .combine=rbind) %do%
+  run_test(whi_genoData, "logTG", NULL, NULL, robust=F, start=snp, end=snp)
+# whi_apoa5_tg %>%
+#   inner_join(getAnnotation(whi_snpAnnot), by="snpID") %>%
+#   mutate(p.value=format(Wald.pval, scientific=T, digits=3)) %>%
+#   select(rsID, p.value) %>%
+#   kable(caption="APOA5 SNPs -> TG")
+
+fto_snps <- unique(filter(cardio_gxe, Gene == "FTO")$SNP)
+fto_snps <- fto_snps[fto_snps %in% names(whi_rs_to_id)]
+whi_fto_bmi <- foreach(snp=whi_rs_to_id[fto_snps],
+             .combine=rbind) %do%
+  run_test(whi_genoData, "logBMI", NULL, NULL, robust=F, start=snp, end=snp)
+# whi_fto_bmi %>%
+#   inner_join(getAnnotation(whi_snpAnnot), by="snpID") %>%
+#   mutate(p.value=format(Wald.pval, scientific=T, digits=3)) %>%
+#   select(rsID, p.value) %>%
+#   kable(caption="FTO SNPs -> BMI")
+
+bind_rows(`APOA5 -> TG`=whi_apoa5_tg, `FTO -> BMI`=whi_fto_bmi, 
+          .id="SNP_pheno_combo") %>%
+  group_by(SNP_pheno_combo) %>%
+  summarise(median_pval=median(Wald.pval)) %>%
+  kable(caption="Sanity check using known SNP-phenotype pairs",
+        longtable=T)
+
+lm(ldl ~ logBMI + logTG + hdl + logGLU + lipid_med, data=whi_phenos) %>%
+  tidy() %>%
+  select(term, estimate, p.value) %>%
+  mutate_at(vars(estimate, p.value), function(x) round(x, 3)) %>%
+  kable(caption="Check for internal consistency within biomarkers: LDL associations",
+        longtable=T)
+
+lm(ldl ~ sfa_pct + mufa_pct + pufa_pct + tot_cal + age, 
+   data=filter(whi_phenos, lipid_med==F)) %>%
+  tidy() %>%
+  select(term, estimate, p.value) %>%
+  mutate_at(vars(estimate, p.value), function(x) round(x, 3)) %>%
+  kable(caption="Check for FFQ-biomarker consistency: LDL associations",
+        longtable=T)
+
+lm(logTG ~ n3 + fat2carb + tot_cal + age, data=whi_phenos) %>%
+  tidy() %>%
+  select(term, estimate, p.value) %>%
+  mutate_at(vars(estimate, p.value), function(x) round(x, 3)) %>%
+  kable(caption="Check for FFQ-biomarker consistency: log(TG) associations",
+        longtable=T)
+
+whi_apoa2_snpID <- whi_rs_to_id["rs5082"]
+whi_apoa2 <- assocRegression(whi_genoData, "logBMI", covar=c("sfa"), ivar="sfa",
+                             snpStart=whi_apoa2_snpID, snpEnd=whi_apoa2_snpID)
+whi_apoa2 %>%
+  select(GxE.Est, GxE.pval) %>%
+  mutate_all(function(x) round(x, 3)) %>%
+  kable(caption="SFA * APOA2 -> BMI interaction",
+        longtable=T)
+```
+
+Everything seems fine here, including expected genotype-biomarker associations.
