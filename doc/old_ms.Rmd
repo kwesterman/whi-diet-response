@@ -1,0 +1,105 @@
+---
+output: 
+  pdf_document:
+    # citation_package: natbib
+    keep_tex: true
+    fig_caption: true
+    latex_engine: pdflatex
+    # template: ~/Dropbox/miscelanea/svm-r-markdown-templates/svm-latex-ms.tex
+title: "Development of dietary fat responder scores using gene-diet interactions in the Women's Health Initiative"
+# thanks: "Replication files are available on the author's Github account..."
+# author:
+# - name: Steven V. Miller
+#   affiliation: Clemson University
+# - name: Mary Margaret Albright
+#   affiliation: Pendelton State University
+# abstract: "This is the abstract..."
+# keywords: "pandoc, r markdown, knitr"
+# date: "`r format(Sys.time(), '%B %d, %Y')`"
+# geometry: margin=1in
+# fontfamily: mathpazo
+# fontsize: 11pt
+# # spacing: double
+bibliography: fat_response.bib
+# biblio-style: apsr
+# see http://svmiller.com/blog/2016/02/svm-r-markdown-manuscript/ for details on this .Rmd template
+---
+
+```{r setup, include=F}
+knitr::opts_chunk$set(echo=F, fig.path="figures/", 
+                      cache.path="../../cache/fat_response/")
+suppressMessages(silent <- lapply(
+  c("knitr", "kableExtra",
+    "tidyverse", "broom", "cowplot",
+    "IlluminaHumanMethylation450kanno.ilmn12.hg19"), 
+  library, character.only=T))
+```
+
+```{r load-results}
+load("../../output/fat_response_objects.RData")
+
+library(IlluminaHumanMethylation450kanno.ilmn12.hg19)
+anno_450k <- data.frame(
+  getAnnotation(IlluminaHumanMethylation450kanno.ilmn12.hg19), 
+  stringsAsFactors=F)
+```
+
+# Abstract
+
+# Introduction
+
+* Para. 1: GxE central to the hype that has shown promise in particular applications....personalized nutrition!!
+    - The emergence of gene-diet interactions (GDI) studies, along with specific well-replicated examples [@Corella___] have provided suggestions that genome-guided personalized nutrition can become a reality.
+    - Many GDIs have focused in the cardiometabolic realm. Typically, these focus on cardiometabolic risk factors based on biology-based candidate genes/variants (pick a study from Jose, Lu Qi, and caffeine), but some have looked at actual outcomes (e.g. MI [@Cornelis2006]). Other approaches use main-effect genetic risk scores, such as that for obesity interacting with sugar-sweetened beverage intake to influence anthropometric traits [@Qi2012; @Olsen2016].
+
+* Para. 2: However, to translate GxE into the most effective risk scores, 3 elements will be necessary:
+    1. Replicable (find some review or similar that discusses lack of reproducibility and difficulty across populations)
+    2. Genome-wide (mention that up until now most investigations are either few-gene hypothesis-based or genome-wide main effect scores)
+    3. Causal/applicable to changes in RF based on change in dietary intake
+
+Nutrigenetics approaches (in which genetic information is used to predict response to dietary inputs) are a central component to the emerging promise of personalized nutrition for cardiometabolic risk reduction. Inter-individual differences in preferences, metabolism, detoxification, excretion, etc. affect our responses to food, in a similar way to the well-studied field of pharmacogenomics [@Ma2011]. Ideally, genotype-based nutrigenetic investigations would be conducted in large-scale dietary interventions. Two notable examples are the PREDIMED and POUNDS LOST trial, with notable findings including the interaction of a TCF7L2 variant with a Mediterranean diet pattern for glycemic traits [@Corella2013] and the interaction of a PCSK9 variant with dietary carbohydrate for insulin resistance [@Huang2015]. However, these are only able to examine one dietary change (whether food, nutrient, or pattern) at a time, and are often limited to lower sample sizes [@Ordovas2018].
+
+To allow for more flexibility and greater statistical power, gene-diet interactions (GDIs) are more commonly investigated in observational datasets. There is a rich literature of GDI discovery in the cardiometabolic realm. Typically, these focus on cardiometabolic risk factors based on biology-based candidate genes/variants [@Corella2009; @Cuda2011], but some have looked at actual outcomes (e.g. MI [@Cornelis2006]). Other approaches use main-effect genetic risk scores, such as that for obesity interacting with sugar-sweetened beverage intake to influence anthropometric traits [@Qi2012; @Olsen2016].
+
+Characterization of individuals based on single or small groups of SNPs may neglect important signal elsewhere in the genome, especially when dealing with highly polygenic cardiometabolic traits. Thus, for effective personalized nutrition approaches to be realized, it will be necessary to integrate signals across the genome. A few investigations have explored GDIs genome-wide, such as for dairy and BMI [@Smith2018] and for various dietary components and colorectal cancer [@Figueiredo2014]. However, genome-wide interaction studies (GWIS) can be problematic due to the lower statistical power inherent in gene-environment interaction analyses [@Dempfle2008]. Furthermore, the potential for confounding and reverse causation (i.e. cardiometabolic risk impacting dietary behavior) in statistical interactions from observational data means that GDIs may not always predict modification of the risk factor in question due to dietary modification.
+
+In order to provide proof-of-concept for use of GDIs in "developing""" comprehensive diet response genetic scores, we sought to develop a genome-wide, GDI-based dietary fat response score for each of a series of cardiometabolic risk factors using the large sample size available in participants of the UK Biobank. We began by confirming the replication of known cardiometabolic GxE interactions (finding....). We tested the performance of these dietary fat response genetic scores in the fat reduction-focused Women's Health Initiative Dietary Modification trial, observing ... (CRFs) and .... (incident CHD). We then characterized...
+
+# Results
+
+## Genome-wide dietary fat interaction studies
+
+A series of genome-wide interaction studies (GWIS) were undertaken in participants in the UK Biobank (UKB) cohort, using imputed genotypes along with self-reported diet intakes (from 24-hour recalls) and non-fasting blood biomarkers. Baseline characteristics of the UKB participants with available dietary data are shown in Table 1. 
+
+## Comparison to CardioGxE
+
+In order to compare the UKB GWIS results with previous results in the literature, the CardioGxE catalog was mined for the set of SNPs supporting gene-environment interactions (GEI) with dietary fat-related environmental exposures. As this catalog was developed in 2014, a literature search was undertaken to update the catalog for dietary fat-related exposures. The search was conducted as described for the original CardioGxE catalog development, while including dietary fat-specific search terms to refine the set of results (see Methods). This narrow update resulted in an increase from 
+
+# Discussion
+
+# Methods
+
+## Genotype data and preprocessing
+
+Genotypes in UK Biobank were retrieved from ######. The following filters were applied: 
+
+- European ancestry only
+- Those with at least one 24HR
+
+## Replication in CardioGxE
+
+Literature-based GDIs prior to 2014 were retrieved from the CardioGxE catalog [@Parnell2014]. To gather more recent publications, a partial update of the CardioGxE catalog was undertaken. ### procedure/search terms/etc. -- Larry ###
+
+## Genome-wide interaction study
+
+A genome-wide interaction study was performed for each of the six (###) cardiometabolic risk factors. The genome-wide scan used an additive genotype model, adjusted for the dietary fat (binary: % of kcals above or below 35%), age, sex, and five principal components. The primary estimand of interest was the interaction term between dietary fat and allelic dosage at the SNP of interest.
+
+To prioritize variants for inclusion in genetic responder scores, genome-wide "suggestive" variants for main-effect on each risk factor were retrieved from large-scale meta-analyses: GIANT for BMI [@cite GIANT]; International Consortium for Blood Pressure for SBP [@cite ICBP]; Global Lipid Genetics Consortium for LDL-C, HDL-C, and TG [@cite GLGC]; and MAGIC for fasting glucose [@cite MAGIC].
+
+## Genetic responder score construction and evaluation
+
+Each GRS was constructed based on summary statistics for the diet-SNP interaction terms from the associated GWIS. Summary statistics were used as input to a pruning-and-thresholding procedure (using the "--clump" function in Plink 1.9), with a seed threshold of p=#### and an LD threshold of r\superscript{2}=0.5. Genetic scores for each individual were then calculated as a weighted sum of allelic dosages (####) for variants selected by the pruning-and-thresholding procedure, with weights corresponding to the GWIS interaction term estimates.
+
+Genetic responder scores were calculated for WHI-DM participants (as above), and used to test for discrimination of changes in CRFs over the first three years of the dietary modification trial. Risk factor changes were assessed using linear models in participants in the intervention arm, with and without adjustment for baseline CRF levels. As a sensitivity analysis, p-values were calculated in separate models for interaction of the genetic score with 1) trial arm (control vs. dietary modification), and 2) observed fat reduction (negative vs. positive 3-year change in FFQ-estimated dietary fat). GRS were further tested for prediction of 
+
+# References
