@@ -1,11 +1,12 @@
-GWAS for putative SFA-genotype interactions influencing LDL-C levels, and construction of a genetic risk score for "responder-ness" to SFA. The analysis is based on the intuition that regression of the product of centered SFA intakes with centered LDL-C levels on allele frequencies can be viewed as a noisy estimation of a latent correlation between SFA and LDL-C. A genome-wide score predicting this correlation would then act as a biomarker of expected SFA response in a given individual.
+Development of scores predicting response to dietary fat in the Women's Health Initiative. In stage one, a genome-wide interaction study (GWIS) scans for interactions between dietary fat and genotype influencing cardiometabolic risk factors (CRFs). In stage two, these results are aggregated into "fat response scores" and tested in participants in the fat reduction-focused dietary modification trial.
 
-clean_phenotypes/: Python scripts for assembling phenotypes and covariates.
+clean_phenotypes/: R and Python scripts for assembling phenotypes and covariates.
 
-clean_genotypes/: Bash and plink scripts for processing genotype dosage files into plink2 format for analysis.
+clean_genotypes/: Bash and PLINK scripts for processing genotype dosage files into PLINKL format for analysis.
 
-run_gwas/: Bash and plink scripts for running the SFA-LDL GWAS.
+gdi_replication_effort/: Secondary analysis assessing the replication of known GxEs from literature in this dataset.
 
-summarize_gwas.py: Postprocessing of GWAS results (Manhattan/QQ plots, etc.).
-
-meth_interaction.Rmd: Preliminary exploration of a similar concept for DNA methylation (i.e. epigenome-wide association study for the same phenotype).
+annotate_res.py: Annotate GWIS results with reference alleles using the associated plinkset.
+run_gwis_whi.sh: Script for conducting the genome-wide interaction study using PLINK.
+post_gwas.py: Formats GWIS results for downstream analyses and generates Q-Q and Manhattan plots.
+pt_model.sh: Generates responder scores from GWIS summary statistics using a series of PLINK calls.
