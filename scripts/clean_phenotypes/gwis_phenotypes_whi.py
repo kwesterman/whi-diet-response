@@ -7,22 +7,22 @@ import statsmodels.formula.api as smf
 import itertools
 
 
-whi_metadata = pd.read_csv("../../data/processed/metadata_whi.csv")
+whi_metadata = pd.read_csv("../data/processed/metadata_whi.csv")
 
 # Sample-to-subject mapping
-sample_ids = (pd.read_csv("../../data/raw/whi/gen/imputedSampleInfo.txt", sep="\t", skiprows=15)
-              .rename({'SubjectID': 'subjID'}, axis=1)
-              .filter(['SampleID', 'subjID']))
+sample_ids = (pd.read_csv("../data/raw/whi/gen/imputedSampleInfo.txt", sep="\t", skiprows=15)
+              .rename({'SubjectID': 'subjID', 'Dataset': 'dataset'}, axis=1)
+              .filter(['SampleID', 'subjID', 'dataset']))
 
 # Contains ancestry principal components linked to samples
-sample_info_c1 = (pd.read_csv("../../data/raw/whi/gen/sampleInfoWithPCs_c1.txt", sep="\t", skiprows=10)
+sample_info_c1 = (pd.read_csv("../data/raw/whi/gen/sampleInfoWithPCs_c1.txt", sep="\t", skiprows=10)
                   .filter(['SAMPLE_ID','PC1','PC2','PC3','PC4','PC5']))
-sample_info_c2 = (pd.read_csv("../../data/raw/whi/gen/sampleInfoWithPCs_c2.txt", sep="\t", skiprows=10)
+sample_info_c2 = (pd.read_csv("../data/raw/whi/gen/sampleInfoWithPCs_c2.txt", sep="\t", skiprows=10)
                   .filter(['SAMPLE_ID','PC1','PC2','PC3','PC4','PC5']))
 sample_info = pd.concat([sample_info_c1, sample_info_c2], ignore_index=True)
 
 pc_df = (pd.merge(sample_ids, sample_info, left_on='SampleID', right_on='SAMPLE_ID')
-         .filter(regex="subjID|SampleID|PC.*")
+         .filter(regex="subjID|SampleID|dataset|PC.*")
          .groupby('subjID')
          .first()  # Arbitrarily, takes the "first" sample for each subject
          .reset_index())
@@ -45,7 +45,7 @@ def winsorize(x, num_sd=5):
                   upper=x.mean() + num_sd * x.std())
 
 
-gwas_covars = ['visit_year', 'sex', 'race', 'age', 'lipid_med', 'ht_med', 'dm_med'] + ["PC" + str(i) for i in range(1, 6)]
+gwas_covars = ['dataset', 'visit_year', 'sex', 'race', 'age', 'smk_now', 'lipid_med', 'ht_med', 'dm_med'] + ["PC" + str(i) for i in range(1, 6)]
 
 diet_vars = ['sfa', 'mufa', 'pufa', 'fat', 'palm', 'n3', 'pro', 'cho', 'tot_cal', 'alc', 'myhei', 'hei']
              
@@ -122,13 +122,13 @@ gwas_phenos_noFilter["fat_ldl_prod"] = ((pd.to_numeric(gwas_phenos_noFilter.fat_
 gwas_phenos_noFilter["fat_hdl_prod"] = ((pd.to_numeric(gwas_phenos_noFilter.fat_pct_binary, errors="coerce") * 2) - 1) * gwas_phenos_noFilter.hdl_resid
 
 gwas_phenos_noFilter.query('race == "white"').to_csv(
-    "../../data/processed/gen6/whi_white_gwas_phenos.txt", sep=" ", na_rep="NA", 
+    "../data/processed/whi_prediction/whi_white_gwas_phenos.txt", sep=" ", na_rep="NA", 
     index=False)
 #gwas_phenos.query('race == "black"').to_csv(
-#    "../../data/processed/gen6/whi_black_gwas_phenos_long.txt", sep=" ", na_rep="NA", 
+#    "../data/processed/whi_prediction/whi_black_gwas_phenos_long.txt", sep=" ", na_rep="NA", 
 #    index=False)
 #gwas_phenos.query('race == "hispanic"').to_csv(
-#    "../../data/processed/gen6/whi_hispanic_gwas_phenos_long.txt", sep=" ", na_rep="NA", 
+#    "../data/processed/whi_prediction/whi_hispanic_gwas_phenos_long.txt", sep=" ", na_rep="NA", 
 #    index=False)
 
 

@@ -1,0 +1,154 @@
+---
+output: 
+  pdf_document:
+    keep_tex: true
+    fig_caption: true
+    latex_engine: pdflatex
+title: "Supplementary Materials: A gene-diet interaction-based score predicts response to dietary fat in the Women's Health Initiative"
+bibliography: whi_frp_ms.bib
+csl: ajcn.csl
+---
+
+```{r setup, include=F}
+knitr::opts_chunk$set(echo=F, fig.path="figures/")
+suppressMessages(silent <- lapply(
+  c("knitr", "kableExtra", "tidyverse", "broom", "cowplot",
+    "jtools", "ggstance"), 
+  library, character.only=T))
+theme_set(theme_cowplot(font_size=8))
+```
+
+```{r load-data}
+load("../output/diet_response_objects.RData")
+```
+
+\newcommand{\beginsupplement}{%
+        \setcounter{table}{0}
+        \renewcommand{\thetable}{S\arabic{table}}%
+        \setcounter{figure}{0}
+        \renewcommand{\thefigure}{S\arabic{figure}}%
+     }
+\beginsupplement
+
+```{r show-power-calcs}
+quanto_res %>%
+  setNames(c("GxE variance explained (%)", "N (nominal)", "N (suggestive)", 
+             "N (genome-wide)")) %>%
+  kable(booktabs=T, linesep="", longtable=T,
+        caption="Sample size necessary to achieve power of 0.8") %>%
+  footnote(general="Power calculations were undertaken using the Quanto tool, with parameters set as follows: additive model, SNP main effect of 0.5% of trait variance, binary environment with 50% prevalence, and environmental effect explaining 10% of the trait variance.",
+           general_title="",
+           threeparttable=T)
+```
+
+```{r show-workflow, fig.cap="Workflow of the study. First, a series of genome-wide interaction studies (GWIS) were conducted with dietary fat as the exposure for each of six cardiovascular risk factors (CRFs). Next, dietary fat response scores were developed using GWIS summary statistics and tested for the prediction of one-year CRF changes in the Dietary Modification trial intervention arm. Finally, the LDL-C score was tested for the prediction of differential effects on chronic disease development over approximately twenty years of follow-up."}
+include_graphics("workflow.pdf")
+```
+
+```{r show-qq-plots, fig.asp=1, fig.cap="Q-Q plots from individual CRF GWIS. The distribution of p-values from each GWIS is plotted against the expected uniform p-value distribution. Plots correspond to: a) BMI, b) SBP, c) LDL-C, d) HDL-C, e) TG, and f) FG."}
+res_dir <- "../data/processed/whi_prediction/"
+outcome_transforms <- list(
+  bmi="logBMI",
+  sbp="logSBP",
+  hdl="logHDL",
+  tg="logTG",
+  glu="logGLU",
+  ldl="ldl"
+)
+a <- lapply(rfs, function(rf) {
+  qq_path <- paste0(res_dir, "fat_pct_binary_", outcome_transforms[rf], 
+                    "_whi_white_qq.png")
+  grid::rasterGrob(png::readPNG(qq_path), interpolate=T)
+})
+
+plot_grid(a[[1]], a[[2]], a[[3]], a[[4]], a[[5]], a[[6]],
+          nrow=3, labels=c("a", "b", "c", "d", "e", "f"))
+```
+
+```{r show-test-scores-alternate-filters, message=F}
+num_variants_df <- tibble(
+  rf=c("bmi", "sbp", "ldl", "hdl", "tg", "glu"),
+  all=c(158365, 153942, 156313, 153942, 152006, 161906),
+  nom=c(6042, 1536, 1760, 1731, 1774, 1924),
+  sugg=c(569, 6, 46, 42, 47, 7),
+) %>%
+  mutate(rf=pretty_rfs[rf]) %>%
+  gather(key="filt", value="n_snps", all:sugg)
+
+bind_rows(all=fat_score_res_nofilter,
+          nom=fat_score_res,
+          sugg=fat_score_res_suggfilter,
+          .id="filt") %>%
+  select(rf, filt, n, effect_std, p.value) %>%
+  mutate(effect_std=round(effect_std, 3),
+         p.value=ifelse(p.value < 1e-3, 
+                        format(p.value, digits=3, scientific=T),
+                        round(p.value, 3)),
+         rf=pretty_rfs[rf]) %>%
+  mutate_all(as.character) %>%
+  inner_join(num_variants_df, by=c("rf", "filt")) %>%
+  gather(key=trait, value=value, n:n_snps) %>%
+  mutate(filt_trait=paste(filt, trait, sep="_")) %>%
+  select(-filt, -trait) %>%
+  spread(key=filt_trait, value=value) %>%
+  select(rf, n=all_n,
+         all_n_snps, all_effect_std, all_p.value,
+         nom_n_snps, nom_effect_std, nom_p.value,
+         sugg_n_snps, sugg_effect_std, sugg_p.value) %>%
+  setNames(c("CRF", "N\\textsuperscript{1}", rep(c("\\# SNPs\\textsuperscript{2}", "SES\\textsuperscript{3}", "P-value"), 3))) %>%
+  kable(booktabs=T, linesep="", longtable=T, escape=F,
+        caption="Responder score effects on CRF changes in DM trial participants across main-effect filter thresholds") %>%
+  add_header_above(c(" "=2, "All variants"=3, "Nominal main effect (p<0.05)"=3, "Suggestive main effect (p<1e-5)"=3)) %>%
+  footnote(number=c(
+    "Sample size available with 1-year follow-up for each CRF",
+    "Number of SNPs selected by the pruning-and-thresholding algorithm for each CRF-threshold combination",
+    "Standardized effect size (SES) represents the regression coefficient estimate in terms of CRF standard deviation per responder score standard deviation"),
+    general_title="",
+    threeparttable=T)
+```
+
+```{r show-test-scores-cross-ancestry, message=F}
+bind_rows(ca=fat_score_res_ca,
+          black=fat_score_res_black,
+          hispanic=fat_score_res_his,
+          .id="ancestry") %>%
+  select(rf, ancestry, n, effect_std, p.value) %>%
+  mutate(effect_std=round(effect_std, 3),
+         p.value=ifelse(p.value < 1e-3, 
+                        format(p.value, digits=3, scientific=T),
+                        round(p.value, 3)),
+         rf=pretty_rfs[rf]) %>%
+  mutate_all(as.character) %>%
+  gather(key=trait, value=value, n:p.value) %>%
+  mutate(anc_trait=paste(ancestry, trait, sep="_")) %>%
+  select(-ancestry, -trait) %>%
+  spread(key=anc_trait, value=value) %>%
+  select(rf,
+         ca_n, ca_effect_std, ca_p.value,
+         black_n, black_effect_std, black_p.value,
+         hispanic_n, hispanic_effect_std, hispanic_p.value) %>%
+  setNames(c("CRF", rep(c("N", "SES\\textsuperscript{1}", "P-value"), 3))) %>%
+  kable(booktabs=T, linesep="", longtable=T, escape=F,
+        caption="Responder score effects on CRF changes in DM trial participants across ancestries") %>%
+  add_header_above(c("", "All combined"=3, "Black"=3, "Hispanic"=3)) %>%
+  footnote(number=c(
+    "Standardized effect size (SES) represents the regression coefficient estimate in terms of CRF standard deviation per responder score standard deviation"),
+    general_title="",
+    threeparttable=T)
+```
+
+```{r show-test-ldl-scores-other-rfs, message=F}
+ldl_score_res %>%
+  filter(test_rf != "ldl") %>%
+  select(test_rf, n_snps, n, effect_std, p.value) %>%
+  mutate(effect_std=round(effect_std, 2),
+         p.value=round(p.value, 2),
+         test_rf=pretty_rfs[test_rf]) %>%
+  setNames(c("Outcome risk factor", "\\# SNPs in risk score", "Sample size",
+             "Std. effect size\\textsuperscript{1}", "P-value")) %>%
+  kable(booktabs=T, linesep="", longtable=T, escape=F,
+        caption="LDL-FRS effects on alternate CRF changes in DM trial participants") %>%
+  footnote(number=c(
+    "Std. effect size represents the regression coefficient estimate in terms of CRF standard deviation per responder score standard deviation"),
+    threeparttable=T)
+```
