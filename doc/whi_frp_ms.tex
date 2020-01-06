@@ -28,6 +28,7 @@
             pdfborder={0 0 0},
             breaklinks=true}
 \urlstyle{same}  % don't use monospace font for urls
+\usepackage{longtable,booktabs}
 \usepackage{graphicx,grffile}
 \makeatletter
 \def\maxwidth{\ifdim\Gin@nat@width>\linewidth\linewidth\else\Gin@nat@width\fi}
@@ -104,9 +105,9 @@ the Women's Health Initiative}
 \section{Abstract}\label{abstract}}
 
 \textbf{Background:} While diet response prediction for cardiometabolic
-risk factors (CRFs) has been demonstrated using single SNPs and
-main-effect genetic risk scores, little investigation has gone into the
-development of genome-wide diet response scores.
+risk factors (CRFs) has been demonstrated using single genetic variants
+and main-effect genetic risk scores, little investigation has gone into
+the development of genome-wide diet response scores.
 
 \textbf{Objective:} Here, we sought to leverage the multi-study setup of
 the Women's Health Initiative cohort to generate and test genetic scores
@@ -115,10 +116,10 @@ LDL-cholesterol, HDL-cholesterol, triglycerides, and fasting glucose) to
 dietary fat.
 
 \textbf{Design:} A genome-wide interaction study was undertaken for each
-CRF in women (n \textasciitilde{} 10000) not participating in the
-Dietary Modification (DM) trial, which focused on the reduction of
-dietary fat. Genetic scores based on these analyses were developed using
-a pruning-and-thresholding approach and tested for the prediction of
+CRF in women (n \textasciitilde{} 9000) not participating in the Dietary
+Modification (DM) trial, which focused on the reduction of dietary fat.
+Genetic scores based on these analyses were developed using a
+pruning-and-thresholding approach and tested for the prediction of
 one-year CRF changes as well as long-term chronic disease development in
 DM trial participants (n \textasciitilde{} 5000).
 
@@ -146,46 +147,50 @@ predict response to dietary inputs, are central to the emerging promise
 of personalized nutrition for cardiometabolic risk reduction.
 Inter-individual differences in food preferences, metabolism,
 detoxification, excretion, etc. affect our responses to diet, in a
-similar manner to the well-studied field of pharmacogenomics (1).
-Ideally, genotype-based nutrigenetic investigations would be conducted
-in large-scale dietary interventions. Two notable examples are the
-PREDIMED and POUNDS LOST trial, with significant findings including the
-interaction of a \emph{TCF7L2} variant with a Mediterranean diet pattern
-for glycemic traits (2) and the interaction of a \emph{PCSK9} variant
-with dietary carbohydrate for insulin resistance (3). However, such
-intervention-based studies are able to examine only a single dietary
-change (whether food, nutrient, or pattern) at a time, and are often
-limited to lower sample sizes (4).
+similar manner to the well-studied field of pharmacogenomics (Ma and Lu
+2011). Ideally, genotype-based nutrigenetic investigations would be
+conducted in large-scale dietary interventions. Two notable examples are
+the PREDIMED and POUNDS LOST trial, with significant findings including
+the interaction of a \emph{TCF7L2} variant with a Mediterranean diet
+pattern for glycemic traits (Corella et al. 2013) and the interaction of
+a \emph{PCSK9} variant with dietary carbohydrate for insulin resistance
+(Huang et al. 2015). However, such intervention-based studies are able
+to examine only a single dietary change (whether food, nutrient, or
+pattern) at a time, and are often limited to lower sample sizes (Ordovas
+et al. 2018).
 
 To allow for more flexibility and greater sample sizes, gene-diet
 interactions (GDIs) are more commonly investigated in observational
 datasets. There is a rich literature of GDI discovery in the
 cardiometabolic realm. Typically, these focus on cardiometabolic risk
-factors in relation to biology-based candidate genes/variants (5,6), but
-some have looked at clinical outcomes (e.g.~MI (7)). Other approaches
-use main-effect genetic risk scores, such as that for obesity
-interacting with sugar-sweetened beverage intake to influence
-anthropometric traits (8,9).
+factors in relation to biology-based candidate genes/variants (Corella
+2009; Cuda et al. 2011), but some have looked at clinical outcomes
+(e.g.~MI (Cornelis et al. 2006)). Other approaches use main-effect
+genetic risk scores, such as that for obesity interacting with
+sugar-sweetened beverage intake to influence anthropometric traits (Qi
+et al. 2012; Olsen et al. 2016).
 
 Characterization of individuals based on single or small groups of
 single nucleotide polymorphisms (SNPs) likely neglects important signal
 elsewhere in the genome, especially when dealing with highly polygenic
 cardiometabolic traits. Thus, for effective personalized nutrition
-approaches to be realized, it is necessary to integrate signals across
-the genome. A few investigations have explored GDIs genome-wide, such as
-for dairy and BMI (10) and for various dietary components and colorectal
-cancer (11). However, genome-wide interaction studies (GWIS) can be
-problematic due to the lower statistical power inherent in
-gene-environment interaction analyses (12). Furthermore, the potential
-for confounding and reverse causation (i.e.~cardiometabolic risk
-impacting dietary behavior) in statistical interactions from
-observational data means that GDIs may not always predict modification
-of the risk factor in question after a dietary intervention.
+approaches to be realized, it is necessary to integrate many signals
+across the genome. A few investigations have explored GDIs genome-wide,
+such as for dairy and BMI (Smith et al. 2018) and for various dietary
+components and colorectal cancer (Figueiredo et al. 2014). However,
+genome-wide interaction studies (GWIS) can be problematic due to the
+lower statistical power inherent in gene-environment interaction
+analyses (Dempfle et al. 2008). Furthermore, there is potential for
+confounding and reverse causation (i.e.~cardiometabolic risk impacting
+dietary behavior) in statistical interactions from observational data.
+Given these limitations, it is not yet known whether collections of
+GDIs, discovered in observational datasets, can predict the effect of a
+dietary intervention on cardiometabolic risk factors (CRFs).
 
-In order to provide proof-of-concept for the use of GDIs in developing
-comprehensive diet response genetic scores, we sought to develop a
-genome-wide, GDI-based dietary fat response score for each of a series
-of cardiometabolic risk factors (CRFs). We performed genome-wide
+In order to provide proof-of-concept for the use of observational
+gene-diet interactions in developing comprehensive diet response genetic
+scores, we sought to develop a genome-wide, GDI-based dietary fat
+response score for each of a series of CRFs. We performed genome-wide
 interaction studies for six CRFs, prioritizing sites with documented
 nominal main effects in prior genome-wide association studies, and used
 these intermediate results to derive fat response scores (FRS) for each
@@ -206,17 +211,17 @@ Dataset}\label{womens-health-initiative-dataset}}
 
 The Women's Health Initiative study consists of a series of substudies:
 three clinical trials (related to cancer, cardiovascular disease, and
-osteoporosis) and an observational study (13). Over 160,000 participants
-were enrolled between 1993-1998, with the ability to enroll in up to 3
-of the clinical trials simultaneously. For the purposes of this
-analysis, participants were categorized based only on whether or not
-they were enrolled in the dietary modification (DM) trial, which
-randomized almost 50,000 women to a low-fat diet or a control diet with
-no recommended dietary changes, with primary outcomes being incidence of
-breast and colorectal cancers and heart disease {[}(14). Study of these
-participants conformed to the ethical guidelines outlined in the
-Declaration of Helsinki, and this research was approved by the Tufts
-Health Sciences IRB (protocol 12592).
+osteoporosis) and an observational study (Anderson et al. 1998). Over
+160,000 participants were enrolled between 1993-1998, with the ability
+to enroll in up to 3 of the clinical trials simultaneously. For the
+purposes of this analysis, participants were categorized based only on
+whether or not they were enrolled in the dietary modification (DM)
+trial, which randomized almost 50,000 women to a low-fat diet or a
+control diet with no recommended dietary changes, with primary outcomes
+being incidence of breast and colorectal cancers and heart disease
+(Ritenbaugh et al. 2003). Study of these participants conformed to the
+ethical guidelines outlined in the Declaration of Helsinki, and this
+research was approved by the Tufts Health Sciences IRB (protocol 12592).
 
 Participants were comprehensively screened at baseline, including
 physical measurements, blood sample collection, and questionnaire
@@ -224,28 +229,29 @@ administration, while only a subset of participants provided blood
 samples or returned questionnaires during later visits. The food
 frequency questionnaire (FFQ) was designed specifically for the WHI
 study, emphasizing specific foods and preparation methods to maximize
-its sensitivity to changes in fat intake (15).
+its sensitivity to changes in fat intake (Patterson et al. 1999).
 
-Phenotype data were accessed from dbGaP (accession: phs000746.v2.p3).
-Values shown in Table 1 only pertain to women whose genotypes were
-measured in one of a series of follow-up studies. For gene-diet
-interaction analyses, SBP, LDL-C, and FG were adjusted for medication
-use: LDL-C and FG values were divided by 0.75 for those on
-lipid-lowering and anti-diabetic medication, respectively, and SBP
-values were increased by 15 mmHg for those on anti-hypertensive
-medication. This type of adjustment for medication use has precedent in
-gene-environment interaction analyses (16). Cardiovascular risk factors
-(CRFs) were winsorized at 5 standard deviations from the mean and those
-other than LDL-C (BMI, SBP, HDL-C, TG, and FG) were log-transformed
-prior to analysis. Longitudinal risk factor changes were calculated in
-DM trial participants as the difference between baseline and year 1.
-Adjudicated time-to-event data for chronic disease outcomes (coronary
-heart disease, myocardial infarction, ischemic stroke, hemorrhagic
-stroke, and non-CVD death) were collected, while diabetes incidence was
-defined as the self-report of any of: diabetes pills, insulin treatment,
-or general treatment for diabetes. Follow-up data was available for
-approximately 22 years following enrollment. Phenotype data processing
-was performed using R version 3.4.3 (17) and Python version 3.6.0.
+Phenotype data were accessed from the database of Genotypes and
+Phenotypes (dbGaP; accession: phs000746.v2.p3). Values shown in Table 1
+only pertain to women whose genotypes were measured in one of a series
+of follow-up studies. For gene-diet interaction analyses, SBP, LDL-C,
+and FG were adjusted for medication use: LDL-C and FG values were
+divided by 0.75 for those on lipid-lowering and anti-diabetic
+medication, respectively, and SBP values were increased by 15 mmHg for
+those on anti-hypertensive medication. This type of adjustment for
+medication use has precedent in gene-environment interaction analyses
+(Rao et al. 2017). Cardiovascular risk factors (CRFs) were winsorized at
+5 standard deviations from the mean and those other than LDL-C (BMI,
+SBP, HDL-C, TG, and FG) were log-transformed prior to analysis.
+Longitudinal risk factor changes were calculated in DM trial
+participants as the difference between baseline and year 1. Adjudicated
+time-to-event data for chronic disease outcomes (coronary heart disease,
+myocardial infarction, ischemic stroke, hemorrhagic stroke, and non-CVD
+death) were collected, while diabetes incidence was defined as the
+self-report of any of: diabetes pills, insulin treatment, or general
+treatment for diabetes. Follow-up data was available for approximately
+22 years following enrollment. Phenotype data processing was performed
+using R version 3.4.3 (R Core Team 2017) and Python version 3.6.0.
 
 \hypertarget{genotype-data-and-preprocessing}{%
 \subsection{Genotype data and
@@ -260,17 +266,18 @@ Hardy-Weinberg equilibrium, and minor allele frequency. Phasing had been
 performed for autosomes using BEAGLE, followed by imputation using
 minimac (MACH for the SHARe study subset). After download from dbGaP,
 variants were converted from dose format using dose2plink
-(\url{http://genepi.qimr.edu.au/staff/sarahMe/dose2plink}), filtered for
-imputation R-squared \textgreater{} 0.3 and minor allele frequency (MAF)
-\textgreater{}0.001, and annotated with rsIDs, loci, and allelic
-information using the 1000 Genomes Phase 3 download from dbSNP (download
-date: April 13, 2018). Only variants passing the imputation quality
-threshold in all genotyping sub-studies were included in the final
-dosage dataset. For score development and calculation, imputed variant
-dosages were converted to hard-calls and set to missing if the estimated
-dosage was not within 0.1 of an integer allele count. Post-imputation
-genotype data processing was performed using PLINK 2.0, while clumping
-and score calculation were performed using PLINK 1.9 (18).
+(\url{http://genepi.qimr.edu.au/staff/sarahMe/dose2plink.html}),
+filtered for imputation R-squared \textgreater{} 0.3 and minor allele
+frequency (MAF) \textgreater{}0.001, and annotated with rsIDs, loci, and
+allelic information using the 1000 Genomes Phase 3 download from dbSNP
+(download date: April 13, 2018). Only variants passing the imputation
+quality threshold in all genotyping sub-studies were included in the
+final dosage dataset. For score development and calculation, imputed
+variant dosages were converted to hard-calls and set to missing if the
+estimated dosage was not within 0.1 of an integer allele count.
+Post-imputation genotype data processing was performed using PLINK 2.0,
+while clumping and score calculation were performed using PLINK 1.9
+(Chang et al. 2015).
 
 \hypertarget{genome-wide-interaction-studies}{%
 \subsection{Genome-wide interaction
@@ -286,33 +293,35 @@ including Hip Fracture, GARNET, WHIMS+, GECCO (initial or CytoSNP), and
 AS264/MOPMAP. (Many participants were also genotyped as a part of the
 SHARe effort, but those women were of African American and Hispanic
 ancestry and thus were not included in the GWIS portion of this study.)
-Five of six sub-studies were adjusted for as binary variables to avoid
-collinearity. The primary estimand of interest was the interaction term
-between dietary fat and minor allele count at the SNP of interest.
-Interaction analyses were carried out using PLINK 2.0 (18). Variants of
-interest were annotated to genes using Annovar (19).
+The primary estimand of interest was the interaction term between
+dietary fat and minor allele count at the SNP of interest. Interaction
+analyses were carried out using PLINK 2.0 (Chang et al. 2015). Variants
+of interest were annotated to genes using Annovar (Wang, Li, and
+Hakonarson 2010).
 
 Gene-environment interaction power calculations for single SNPs were
-performed using the Quanto tool (20). The following assumptions were
-made: additive model; variance explained by genotype alone = 0.5\%; and
-binary environment with 50\% prevalence and explaining 10\% of variance.
-(Note: there is no effect of minor allele frequency in this case given
-that variances explained are directly specified.)
+performed using the Quanto tool (Gauderman 2002). The following
+assumptions were made: additive model; variance explained by genotype
+alone = 0.5\%; and binary environment with 50\% prevalence and
+explaining 10\% of variance. (Note: there is no effect of minor allele
+frequency in this case given that variances explained are directly
+specified.)
 
 \hypertarget{genetic-responder-score-construction-and-evaluation}{%
 \subsection{Genetic responder score construction and
 evaluation}\label{genetic-responder-score-construction-and-evaluation}}
 
-To prioritize variants for inclusion in genetic responder scores,
-nominal (p \textless{} 0.05) variants for main-effect on each risk
-factor were retrieved from large-scale meta-analyses: GIANT for BMI
-(21); International Consortium for Blood Pressure for SBP (22); Global
-Lipid Genetics Consortium (GLGC) for LDL-C, HDL-C, and TG (23); and
-MAGIC for fasting glucose (24). Each FRS was constructed using summary
-statistics for the diet-SNP interaction terms from the associated GWIS.
-SNPs were filtered for nominal main-effect relationships using the above
-meta-analyses, and interaction summary statistics were used as input to
-a pruning-and-thresholding (P\&T) procedure (using the ``--clump''
+Given the lower power of gene-environment interaction detection, a
+subset of variants were prioritized for score derivation having nominal
+(p \textless{} 0.05) marginal effects in large-scale meta-analyses.
+Summary statistics were retrieved from: GIANT for BMI (Yengo et al.
+2018); International Consortium for Blood Pressure for SBP (Ehret et al.
+2011); Global Lipid Genetics Consortium (GLGC) for LDL-C, HDL-C, and TG
+(Willer et al. 2013); and MAGIC for fasting glucose (Dupuis et al.
+2010). After this main-effect filter, each FRS was constructed using
+summary statistics for the diet-SNP interaction terms from the
+associated GWIS. Interaction summary statistics were used as input to a
+pruning-and-thresholding (P\&T) procedure (using the ``--clump''
 function in PLINK 1.9), with a seed threshold of p=0.05 and an LD
 threshold of r\textsuperscript{2}=0.5. The linkage disequilibrium
 references for the procedure was calculated from genotypes of the white
@@ -322,27 +331,36 @@ for variants selected by the P\&T procedure, with weights corresponding
 to the GWIS interaction term estimates. This type of diet
 interaction-based genetic score development has been described
 previously, for example in a Korean cohort with respect to body fat
-changes (25). A genetic risk score for LDL-C was created using the GLGC
-LDL-C meta-analysis summary statistics and the same P\&T method and
-parameters as was used for the interaction analyses, resulting in a
-26467-SNP score.
+changes (Cha et al. 2018). A genetic risk score for LDL-C (main-effect)
+was created using the GLGC LDL-C meta-analysis summary statistics and
+the same P\&T method and parameters as was used for the interaction
+analyses, resulting in a 26467-SNP score.
 
 FRS were used to test for discrimination of changes in CRFs over the
 first year of the DM trial. Risk factor changes were assessed using
 linear models in participants in the intervention arm, with and without
-adjustment for baseline CRF levels. As a sensitivity analysis, p-values
-were calculated in separate models for interaction of the genetic score
-with 1) trial arm (control vs.~dietary modification), and 2) observed
-fat reduction (negative vs.~positive 3-year change in FFQ-estimated
-dietary fat). GRS were further tested for prediction of chronic disease
+adjustment for baseline CRF levels. The LDL-C-specific FRS was then
+investigated further in a series of sensitivity analyses. First,
+p-values were calculated for interaction of the genetic score with trial
+arm (control vs.~dietary modification). Second, principal components
+analysis was performed in DM intervention participants using four
+baseline metabolic biomarkers (total cholesterol, HDL-C, TG, and FG)
+included in a prior clustering analysis for use in personalized
+nutrition stratification (O'Donovan et al. 2015). Equivalent linear
+models to the original FRS assessment models were fit, with additional
+adjustment for the four resulting principal components.
+
+The LDL-FRS was further tested for prediction of chronic disease
 development during follow-up across DM trial strata. Time-to-event for
 each of coronary heart disease, myocardial infarction, ischemic stroke,
-hemorrhagic stroke, and non-CVD death were used to fit age-adjusted Cox
-proportional hazards models, including a random effect term for
-genotyping sub-study (\emph{cluster()} term in the \emph{coxph} function
-call). Estimated log-hazard ratios were extracted from regressions
-conducted in the following strata: 1) DM trial intervention arm, 2) DM
-trial control arm, 3) DM trial intervention arm filtered for
+hemorrhagic stroke, diabetes, and non-CVD death were used to fit
+age-adjusted Cox proportional hazards models, including a random effect
+term for genotyping sub-study (\emph{cluster()} term in the \emph{coxph}
+function call). This frailty/random effects model has been recommended
+for optimizing power in multi-center time-to-event models (Munda and
+Legrand 2014). Estimated log-hazard ratios were extracted from
+regressions conducted in the following strata: 1) DM trial intervention
+arm, 2) DM trial control arm, 3) DM trial intervention arm filtered for
 participants with 1-year fat reduction based on FFQ, and 4) DM trial
 control arm filtered for participants with 1-year fat increase based on
 FFQ.
@@ -354,72 +372,94 @@ FFQ.
 \subsection{Dietary fat responder score
 development}\label{dietary-fat-responder-score-development}}
 
-A series of genome-wide interaction studies (GWIS) were undertaken in
-cross-sectional data from the Women's Health Initiative. These GWIS
-incorporated only women who did not participate in the dietary
-modification (DM) trial, using imputed genotypes along with baseline
-self-reported dietary intakes (from food frequency questionnaires) and
-fasting blood biomarkers. Baseline characteristics of these women, along
-with those participating in the DM trial, are shown in Table 1.
+\begin{figure}
+\centering
+\includegraphics{workflow.pdf}
+\caption{Study workflow. First, a series of genome-wide interaction
+studies (GWIS) were conducted with dietary fat as the exposure for each
+of six cardiovascular risk factors (CRFs). Next, dietary fat response
+scores were developed using GWIS summary statistics and tested for the
+prediction of one-year CRF changes in the Dietary Modification trial
+intervention (with sensitivity models using the control group). Finally,
+the LDL-C score was tested for the prediction of differential effects on
+chronic disease development in the intervention and control groups over
+approximately 22 years of follow-up. CRF: cardiometabolic risk factor,
+FFQ: food frequency questionnaire, GWIS: genome-wide interaction study.}
+\end{figure}
 
-\begin{ThreePartTable}
-\begin{TableNotes}
-\item * Continuous values shown as: median (interquartile range)
-\item DM: dietary modification trial; Non-DM: all women not participating in the DM trial (enrolled in at least one of: hormone therapy trial, calcium and vitamin D trial, or observational study)
-\end{TableNotes}
-\begin{longtable}{lll}
-\caption{\label{tab:pop-description}Baseline characteristics of European-ancestry participants in the Women's Health Initiative Study (n = 17304 in total)}\\
+The study workflow is outlined in Figure 1. A series of genome-wide
+interaction studies (GWIS) were undertaken in cross-sectional data from
+the Women's Health Initiative. These GWIS incorporated only women who
+did not participate in the dietary modification (DM) trial, using
+imputed genotypes along with baseline self-reported dietary intakes
+(from food frequency questionnaires) and fasting blood biomarkers.
+Baseline characteristics of these women, along with those participating
+in the DM trial, are shown in Table 1. While there were differences
+across groups in almost all characteristics, they were modest in size.
+
+\begin{longtable}[]{@{}llll@{}}
+\caption{Baseline characteristics of European-ancestry participants in
+the Women's Health Initiative Study (n = 17304 in total)}\tabularnewline
 \toprule
-  & DM trial & Non-DM trial\\
+& DM trial\n(N = 2165 (Intervention), 3281 (Control)) & Non-DM trial\n(N
+= 9414) & P-value\tabularnewline
 \midrule
-Sample size & 6173 & 11131\\
-Age & 66 (61-70) & 68 (64-72)\\
-Current smoking & 403 (7\%) & 994 (9\%)\\
-Lipid-lowering medication & 655 (11\%) & 1454 (13\%)\\
-Hypertension medication & 2334 (38\%) & 4023 (36\%)\\
-Diabetes medication & 300 (5\%) & 560 (5\%)\\
-Body mass index (BMI; kg/m\textasciicircum{}2) & 28.7 (25.2-32.8) & 26.9 (23.7-30.9)\\
-Systolic blood pressure (SBP; mm Hg) & 128.5 (117.5-140) & 144 (132-156)\\
-LDL cholesterol (LDL-C; mg/dL) & 150.8 (127.5-175) & 161 (134-191)\\
-HDL cholesterol (HDL-C; mg/dL) & 50 (42.5-58) & 51 (44-60)\\
-Triglycerides (TG; mg/dL) & 137 (100-194) & 128 (92-179.6)\\
-Fasting glucose (FG; mg/dL) & 97 (90-107) & 97 (90-113.3)\\
+\endfirsthead
+\toprule
+& DM trial\n(N = 2165 (Intervention), 3281 (Control)) & Non-DM trial\n(N
+= 9414) & P-value\tabularnewline
+\midrule
+\endhead
+Age & 66 (60-70) & 68 (64-72) &\tabularnewline
+Current smoking & 366 (7\%) & 888 (9\%) &
+\textless{}0.001\tabularnewline
+Lipid-lowering medication & 583 (11\%) & 1277 (14\%) &
+\textless{}0.001\tabularnewline
+Hypertension medication & 2058 (38\%) & 3416 (36\%) &
+\textless{}0.001\tabularnewline
+Diabetes medication & 269 (5\%) & 498 (5\%) & 0.07\tabularnewline
+Body mass index (BMI; kg/m\^{}2) & 28.9 (25.3-33.1) & 27.2 (24-31.2) &
+0.37\tabularnewline
+Systolic blood pressure (SBP; mm Hg) & 128 (117-140) & 144 (133-156) &
+\textless{}0.001\tabularnewline
+LDL cholesterol (LDL-C; mg/dL) & 151 (128-175) & 161 (135-192) &
+\textless{}0.001\tabularnewline
+HDL cholesterol (HDL-C; mg/dL) & 49.8 (42-58) & 51 (44-60) &
+\textless{}0.001\tabularnewline
+Triglycerides (TG; mg/dL) & 138 (100-195) & 128 (92-180) &
+\textless{}0.001\tabularnewline
+Fasting glucose (FG; mg/dL) & 97 (90-108) & 97.5 (90-113.4) &
+\textless{}0.001\tabularnewline
 \bottomrule
-\insertTableNotes
 \end{longtable}
-\end{ThreePartTable}
 
 Preliminary power calculations were undertaken, based on parameter
 assumptions including a modest SNP main effect (0.5\%) under an additive
 model and a binary environment with 50\% prevalence explaining 10\% of
 the outcome phenotypic variance. The results showed that, at the sample
-sizes available for European ancestry non-DM participants (7000-10000
+sizes available for European ancestry non-DM participants (7050-9412
 individuals for each cardiometabolic risk factor (CRF)), this analysis
 was powered to detect only moderately large interaction effects (GxE
 variance explained greater than approximately 0.5\%) at genome-wide
-significance (Supp. Table S1).
+significance (Supplementary Table 1).
 
 Dietary fat response scores were generated for each CRF using results
-from the corresponding GWIS analysis. Linear regression models were fit
-for log-transformed baseline CRF values (other than LDL-C),
-incorporating gene-dietary fat interactions (dietary fat represented as
-a binary \% of total calories above or below the median) while adjusting
-for age, total calories, five genetic principal components, and
-genotyping sub-study. Q-Q plots of the GWIS results showed that genomic
-inflation was fairly well-controlled (Supp. Figure S1). For each CRF,
-the associated summary statistics (corresponding to the fat-genotype
-interaction term estimates) were filtered to include only those with
-nominal main-effect associations in large-scale published GWAS. This
-filter was informed by the power analysis above and chosen as a
-compromise between discovery and statistical power (alternative results
-using either a more stringent threshold or no filtering are shown in
-Supp. Table S2). A pruning-and-thresholding method was used to generate
-six FRS from these individual sets of summary statistics along with
-genotypes from the WHI DM participants as a linkage disequilibrium (LD)
-reference. Using parameters of seed p-value=0.05 and LD
+from the corresponding GWIS analysis (see Methods). Q-Q plots of the
+GWIS results showed that genomic inflation was fairly well-controlled
+(Supplementary Figure 1). For each CRF, the associated summary
+statistics (corresponding to the fat-genotype interaction term
+estimates) were filtered to include only those with nominal main-effect
+associations in large-scale published GWAS. This filter was informed by
+the power analysis above and chosen as a compromise between discovery
+and statistical power (alternative results using either a more stringent
+threshold or no filtering are shown in Supplementary Table 2). A
+pruning-and-thresholding method was used to generate six FRS from these
+individual sets of summary statistics along with genotypes from the WHI
+DM participants as a linkage disequilibrium (LD) reference. Using
+parameters of seed p-value=0.05 and LD
 r\textsuperscript{2}\textless{}0.5, six sets of score weights were
 generated, with relevant SNP set sizes ranging from 1536 (SBP) to 6042
-(BMI). Scores were then calculated as the weighted sum of allele counts
+(BMI). Scores were then calculated as the weighted sum of allele dosages
 across SNPs, normalized by the number of non-missing SNPs per
 individual.
 
@@ -427,29 +467,43 @@ individual.
 \subsection{Dietary fat responder score
 assessment}\label{dietary-fat-responder-score-assessment}}
 
-\begin{ThreePartTable}
-\begin{TableNotes}
-\item[1] N = sample size available with 1-year follow-up measurements for the CRF in question
-\item[2] Std. effect size represents the regression coefficient estimate in terms of CRF standard deviation per responder score standard deviation
-\item[3] Baseline-adjusted models are adjusted for the baseline value of the CRF being tested
-\end{TableNotes}
-\begin{longtable}{lrrrrrr}
-\caption{\label{tab:test-scores}Responder score effects on 1-year CRF changes in DM trial participants}\\
+\begin{verbatim}
+## Warning in add_header_above(., c(` ` = 4, Univariate = 2, `Baseline-
+## adjusted\\\\textsuperscript{1}` = 2), : Please specify format in kable.
+## kableExtra can customize either HTML or LaTeX outputs. See https://
+## haozhu233.github.io/kableExtra/ for details.
+\end{verbatim}
+
+\begin{verbatim}
+## Warning in footnote(., number = c("Baseline-adjusted models are adjusted
+## for the baseline value of the CRF being tested", : Please specify format in
+## kable. kableExtra can customize either HTML or LaTeX outputs. See https://
+## haozhu233.github.io/kableExtra/ for details.
+\end{verbatim}
+
+\begin{longtable}[]{@{}lrrrrrrr@{}}
+\caption{Responder score effects on 1-year CRF changes in DM trial
+participants}\tabularnewline
 \toprule
-\multicolumn{3}{c}{ } & \multicolumn{2}{c}{Univariate} & \multicolumn{2}{c}{Baseline-adjusted\textsuperscript{3}} \\
-\cmidrule(l{3pt}r{3pt}){4-5} \cmidrule(l{3pt}r{3pt}){6-7}
-Risk factor & \# SNPs in risk score & N\textsuperscript{1} & Std. effect size\textsuperscript{2} & P-value & Std. effect size\textsuperscript{2} & P-value\\
+Risk factor & N\_GWIS\textsuperscript{2} & \# SNPs in risk score &
+N\textsuperscript{3} & Std. effect size\textsuperscript{4} & P-value &
+Std. effect size\textsuperscript{4} & P-value\tabularnewline
 \midrule
-BMI & 6042 & 1988 & 0.03 & 0.221 & 0.02 & 0.253\\
-SBP & 1536 & 2004 & 0.03 & 0.196 & 0.04 & 0.061\\
-LDL-C & 1760 & 145 & -0.18 & 0.026 & -0.19 & 0.007\\
-HDL-C & 1731 & 150 & -0.06 & 0.471 & -0.06 & 0.483\\
-TG & 1774 & 150 & -0.14 & 0.066 & -0.14 & 0.064\\
-FG & 1924 & 281 & 0.02 & 0.791 & 0.03 & 0.570\\
+\endfirsthead
+\toprule
+Risk factor & N\_GWIS\textsuperscript{2} & \# SNPs in risk score &
+N\textsuperscript{3} & Std. effect size\textsuperscript{4} & P-value &
+Std. effect size\textsuperscript{4} & P-value\tabularnewline
+\midrule
+\endhead
+BMI & 9358 & 6042 & 1988 & 0.03 & 0.189 & 0.03 & 0.218\tabularnewline
+SBP & 9412 & 1536 & 2004 & 0.03 & 0.125 & 0.04 & 0.041\tabularnewline
+LDL-C & 7050 & 1760 & 145 & -0.19 & 0.020 & -0.21 & 0.005\tabularnewline
+HDL-C & 7157 & 1731 & 150 & -0.08 & 0.320 & -0.08 & 0.351\tabularnewline
+TG & 7158 & 1774 & 150 & -0.15 & 0.055 & -0.14 & 0.053\tabularnewline
+FG & 7200 & 1924 & 281 & 0.01 & 0.853 & 0.02 & 0.689\tabularnewline
 \bottomrule
-\insertTableNotes
 \end{longtable}
-\end{ThreePartTable}
 
 As the scores were developed to predict a positive interaction with
 dietary fat intake, the expected direction of the FRS effect on risk
@@ -458,37 +512,46 @@ response scores examined, only the LDL-C fat response score (LDL-FRS)
 was predictive at p \textless{} 0.05 of the associated CRF change in DM
 trial participants in the fat-reduction arm (passing a Bonferroni
 correction for the 6 CRFs tested in baseline-adjusted sensitivity
-models). For this score, the standardized effect size was -0.18
-(corresponding to a 5.1 mg/dL greater decrease in LDL-C per score
-standard deviation; p=0.026). We note that the sample size of
+models). For this score, the standardized effect size was -0.19
+(corresponding to a 5.44 mg/dL greater decrease in LDL-C per score
+standard deviation; p=0.02). We note that the sample size of
 European-ancestry DM trial participants with follow-up measurements was
 much smaller for biochemical variables (n\textasciitilde{}150) compared
 to BMI and SBP (n\textasciitilde{}2000). Using the score developed in
 European-ancestry individuals, score performance was then tested in a
 combined-ancestry group including Black and Hispanic individuals, which
-almost doubled the sample size (Supp. Table S3). While some traits
-showed strong relationships (e.g.~SBP), the signs of many were in a
-counter-intuitive direction, including a flip in sign for the
-previously-strong LDL-C relationship, suggesting that these results
-reflect primarily differences in ancestry rather than the intended
-biological differences. This observation was reinforced by the lack of
-association of the score with CRF changes in either Blacks or Hispanics
-alone.
+almost doubled the sample size (Supplementary Table 3). While some
+traits showed strong relationships (e.g.~SBP), the signs of many were in
+a counter-intuitive direction, including a flip in sign for the
+previously-strong LDL-C relationship, suggesting that these results may
+reflect the known difficulties in conducting trans-ancestry polygenic
+prediction (due to differences in linkage disequilibrium among other
+factors) rather than the intended biological differences. This
+observation was reinforced by the lack of association of the score with
+CRF changes in either Blacks or Hispanics alone.
 
 Based on its observed association in European-ancestry participants, the
 LDL-FRS was investigated further. Linear models showed that the LDL-FRS
-accounted for 3.4\% of the variance in 1-year LDL-C changes in the DM
-intervention arm. In baseline-adjusted models, this figure rose slightly
-to 3.9, based on the R\textsuperscript{2} change from a baseline-only
-model. Additional models confirmed an interaction between DM trial arm
-and the LDL-FRS (p=0.011), supporting the specificity of this score for
-the fat-reduction arm. The LDL-FRS also showed specificity for LDL-C in
-that it did not predict changes in any other CRF (Supp. Table S4). The
-1760 component SNPs were annotated using Annovar (19), revealing a
-predominance of intergenic and intronic variants and a set of genes with
-high numbers of independent SNPs contributing to the score (Figure
-1a-d). Top genes by number of contributing SNPs included \emph{CSMD1},
-\emph{PTPRD}, and \emph{RGS12}.
+accounted for 3.7\% (95\% CI: 0.09, 11.9) of the variance in 1-year
+LDL-C changes in the DM intervention arm. In baseline-adjusted models,
+this figure rose slightly to 4.3\%, based on the change in
+R\textsuperscript{2} compared to a baseline-only model. Further
+adjustment for four principal components of baseline metabolic
+biomarkers (see Methods) did not materially affect this estimate
+(4.5\%). For comparison, baseline LDL-C plus these four principal
+components alone explained 21.7\% of this variance, although we note
+that this estimate is likely biased upward due to regression to the mean
+effects (arising from measurement error and stochastic biological
+fluctuations) (Barnett, Pols, and Dobson 2005). Additional models
+confirmed an interaction between DM trial arm and the LDL-FRS (p=0.008),
+supporting the specificity of this score for the fat-reduction arm. The
+LDL-FRS also showed specificity for LDL-C in that it did not predict
+changes in any other CRF (Supplementary Table 4). The 1760 component
+SNPs were annotated using Annovar (Wang, Li, and Hakonarson 2010),
+revealing a predominance of intergenic and intronic variants and a set
+of genes with high numbers of independent SNPs contributing to the score
+(Figure 2A-D). Top genes by number of contributing SNPs included
+\emph{CSMD1}, \emph{PTPRD}, and \emph{RGS12}.
 
 \begin{figure}
 \centering
@@ -503,24 +566,25 @@ e-f) 1-year changes in LDL-C in DM trial participants as a function of
 genetic scores. Mean changes in LDL-C (y-axis) are shown as a function
 of either LDL-FRS (e) or LDL-GRS (f) tertile (x-axis). Error bars
 represent standard errors. LDL-FRS: LDL-C fat response genetic score,
-LDL-GRS: LDL-C main-effect genetic score.}
+GRS: LDL-C main-effect genetic risk score.}
 \end{figure}
 
 Differences in mean LDL-C changes during the DM trial across genetic
-score strata are shown in Figure 1e,f. As suggested by the regression
+score strata are shown in Figure 2E,F. As suggested by the regression
 results, those in the control arm trended towards less strong LDL-C
 reductions in higher LDL-FRS strata, while those in the fat-reduction
 arm showed the opposite trend. Furthermore, isolation of individuals at
 the highest extreme of the score (top 10\%) revealed an LDL-C reduction
-of almost double that of the rest of the DM intervention group (-39.0
-versus -20.0 mg/dL). For comparison to the FRS, a main-effect genetic
-risk score (GRS) for LDL-C was developed using summary statistics from
-the Global Lipid Genetics Consortium meta-analysis (23) and an identical
-pruning-and-thresholding procedure to that used for the GDI-based
-scores. As expected, this score was strongly predictive of baseline
-LDL-C concentrations (p=4.53e-27). However, unlike the GDI-based score,
-the GRS did not predict LDL-C changes in the DM intervention group
-(p=0.15; stratum-specific mean changes in Figure 1f).
+of almost double that of the rest of the DM intervention group (-36.4
+versus -20.3 mg/dL; 95\% CI for the difference: {[}-1, 33.2{]}). For
+comparison to the FRS, a main-effect genetic risk score (GRS) for LDL-C
+was developed using summary statistics from the Global Lipid Genetics
+Consortium meta-analysis (Willer et al. 2013) and an identical
+pruning-and-thresholding procedure to that used for the FRS. As
+expected, this score was strongly predictive of baseline LDL-C
+concentrations (p=1.45e-22). However, unlike the FRS, the GRS did not
+predict LDL-C changes in the DM intervention group (p=0.19;
+stratum-specific mean changes in Figure 2F).
 
 \hypertarget{ldl-frs-association-with-chronic-disease-outcomes}{%
 \subsection{LDL-FRS association with chronic disease
@@ -541,27 +605,26 @@ confidence interval estimates for the regression coefficients.}
 \end{figure}
 
 Next, the LDL-FRS was tested for relationships with incident disease
-outcomes over approximately 22 years of follow-up (Figure 2). Cox
-proportional hazards models were used, adjusting for age at baseline and
-including a random effect for genotyping sub-study. This frailty/random
-effects model has been recommended for optimizing power in multi-center
-time-to-event models (26). In addition to intervention versus control
-arm, another set of ``per protocol-like'' strata was produced by
-additionally filtering for FFQ-based self-reported fat reduction (in the
-intervention group) or fat increase (in the control group). CHD
-qualitatively showed the expected interaction, i.e.~a stronger inverse
-association between LDL-FRS and disease risk in the fat reduction
-group). Ischemic stroke showed a similar pattern, with a risk reduction
-only in the fat reduction group (p = 0.020). In contrast, hemorrhagic
-stroke, while having a low number of events (44 in total), showed a
-positive association only in the fat reduction group (p = 0.011).
-Results for diabetes qualitatively mirrored those for CHD and ischemic
-stroke, while those for non-CVD death did not vary across groups. These
-cross-arm differences were generally strengthened when comparing the per
+outcomes over approximately 22 years of follow-up using Cox proportional
+hazards models (Figure 3). The mean follow-up time for coronary heart
+disease (CHD) was 8.7 years (std. dev. = 5.6), with similar values for
+other outcomes. In addition to intervention versus control arm, another
+set of ``per protocol-like'' strata was produced by additionally
+filtering for FFQ-based self-reported fat reduction (in the intervention
+group) or fat increase (in the control group). CHD qualitatively showed
+the expected interaction, i.e.~a stronger inverse association between
+LDL-FRS and disease risk in the fat reduction group). Ischemic stroke
+showed a similar pattern, with a risk reduction only in the fat
+reduction group (p = 0.029). In contrast, hemorrhagic stroke, while
+having a low number of events (44 in total), showed a positive
+association only in the fat reduction group (p = 0.011). Results for
+diabetes qualitatively mirrored those for CHD and ischemic stroke, while
+those for non-CVD death did not vary across groups. These cross-arm
+differences were generally strengthened when comparing the per
 protocol-like strata, with a much stronger effect for CHD in the
-confirmed fat reduction stratum (p = 4.07e-5). In DM trial arm
-interaction models (score x arm), only ischemic stroke reached nominal
-statistical significance (p \textless{} 0.05).
+confirmed fat reduction stratum (p = 0.005). In DM trial arm interaction
+models (score x arm), only ischemic stroke reached nominal statistical
+significance (p \textless{} 0.05).
 
 \hypertarget{discussion}{%
 \section{Discussion}\label{discussion}}
@@ -569,9 +632,9 @@ statistical significance (p \textless{} 0.05).
 Diet response scores have shown some success in predicting the response
 of cardiovascular risk factors (CRFs) to nutritional interventions, but
 they are often based solely on main effects or single GDI SNPs. Here, we
-explored the potential for gene diet interaction (GDI)-based diet
-responder score development, leveraging the multi-trial setup of the
-Women's Health Initiative. We developed what to our knowledge is the
+explored the potential for genome-wide gene diet interaction (GDI)-based
+diet responder score development, leveraging the multi-trial setup of
+the Women's Health Initiative. We developed what to our knowledge is the
 first example of a diet response score based on a hypothesis-free genome
 scan for each of six risk factors, and showed preliminary evidence for
 the viability of a LDL-C fat response score. The set of SNPs used for
@@ -579,7 +642,8 @@ each score were limited to those showing nominal main effects in
 large-scale GWAS as a compromise between discovery and utilization of
 prior information, which was supported by the weaker results in
 sensitivity models incorporating either stronger (suggestive
-main-effect) or weaker (all SNPs) variant filters (Supp. Table S2).
+main-effect) or weaker (all SNPs) variant filters (Supplementary Table
+2).
 
 Though FRS for six CRFs were developed and tested, only that for LDL-C
 showed nominal significance in predicting 1-year changes in the
@@ -599,110 +663,123 @@ used here.
 containing the highest number of SNPs in the LDL-FRS (11, 9, and 9,
 respectively, after LD-pruning for r\textsuperscript{2} \textless{} 0.5.
 \emph{CSMD1} variants are notably associated with LDL-C response to
-statin treatment (27) as well as SBP response to a high-salt diet
-{[}Newton-Cheh2009{]}. \emph{CSMD1} has also shown epigenetic
-associations with LDL-C (28) as well as response to modification of
-dietary fat composition (29). \emph{PTPRD} variants modulate the
-response of T2D patients to pioglitazone therapy (30) and show
-suggestive associations with eating behaviors (caloric intake at dinner)
-(31). \emph{RGS12} has been linked to LDL-C in GWAS (32). Altogether,
-these genes have literature evidence for relationships to dietary
-intake, response to cardiometabolic therapies, and LDL-C, but have not
-until now been shown to directly modify the LDL-C response to dietary
-fat proportions. We note that there is a bias towards identifying
-LDL-C-related variants in the LDL-FRS, as only nominally-associated
-main-effect SNPs were used as input to the score development algorithm.
+statin treatment (Thompson et al. 2009) as well as SBP response to a
+high-salt diet (Newton-Cheh et al. 2009). \emph{CSMD1} has also shown
+epigenetic associations with LDL-C (Bell et al. 2012) as well as
+response to modification of dietary fat composition (Perfilyev et al.
+2017). \emph{PTPRD} variants modulate the response of T2D patients to
+pioglitazone therapy (Pei et al. 2013) and show suggestive associations
+with eating behaviors (caloric intake at dinner) (Comuzzie et al. 2012).
+\emph{RGS12} has been linked to LDL-C in GWAS (Spracklen et al. 2017).
+Altogether, these genes have literature evidence for relationships to
+dietary intake, response to cardiometabolic therapies, and LDL-C, but
+have not until now been shown to directly modify the LDL-C response to
+dietary fat proportions. We note that there is a bias towards
+identifying LDL-C-related variants in the LDL-FRS, as only
+nominally-associated main-effect SNPs were used as input to the score
+development algorithm.
 
 A reasonable body of literature exists establishing GDIs for both
-dietary fat on CRFs (33,34) and general dietary exposures on LDL-C (35).
+dietary fat on CRFs (Badawi et al. 2012; Zheng et al. 2015) and general
+dietary exposures on LDL-C (Ordovás, Robertson, and Cléirigh 2011).
 Multiple studies have looked specifically at genetic variants modulating
 the LDL-C response to dietary fat. For example, a caloric restriction
 intervention in type 2 diabetics was more effective in reducing LDL-C in
-ApoE4 carriers (-15.6\% versus -0.7\%) (36). Two studies using the
-POUNDS LOST trial found relationships of specific polymorphisms with
-2-year changes in response to a dietary fat intervention. Carriers of a
-risk allele at the APOA5 variant rs964184 show a decrease of 7.5 mg/dL
-in LDL-C in low-fat but not high-fat interventions (37), and carriers of
-the minor allele at CETP rs3764261 show an 8.9 mg/dL greater decrease in
-LDL-C on a low-fat diet (38). Our observed effect size of a 5.4 mg/dL
-decrease in LDL-C is of a similar magnitude to these findings, and
-emerged despite the multi-factorial nature of the WHI DM trial (which
-incorporated additional nutrition recommendations). The observed
-variance explained of 3.4\% for the LDL-FRS means that the score, while
-contributing meaningfully to the prediction, does not capture most of
-the interindividual variability in LDL-C response to the WHI DM trial
-intervention. Based on prior observations of an inflection point in the
-impact of various genetic risk scores near the 90th percentile (39), we
-additionally evaluated the impact of LDL-FRS in the top 10\%, finding
-almost double the LDL-C reduction in DM intervention participants with
-values at this extreme.
+ApoE4 carriers (-15.6\% versus -0.7\%) (Saito et al. 2004). In the
+POUNDS LOST trial, carriers of specific alleles at APOA5 and CETP
+variants saw 7.5 and 8.9 mg/dL greater LDL-C decreases during a low-fat
+dietary intervention (Zhang et al. 2012; Xu et al. 2015). Our observed
+effect size of a 5.4 mg/dL decrease in LDL-C is of a similar magnitude,
+and emerged despite the multi-factorial nature of the WHI dietary
+intervention. The observed variance explained of 3.4\% for the LDL-FRS
+means that the score, while contributing meaningfully to the prediction,
+does not capture most of the interindividual variability in LDL-C
+response to the WHI DM trial intervention. This explanatory power was
+modestly strengthened after adjustment for baseline LDL-C as well as
+principal components reflecting baseline metabolic biomarker patterns.
+Based on prior observations of an inflection point in the impact of
+various genetic risk scores near the 90th percentile (Khera et al.
+2018), we additionally evaluated the impact of LDL-FRS in the top 10\%,
+finding almost double the LDL-C reduction in DM intervention
+participants with values at this extreme.
+
+The potential clinical utility of these findings can be evaluated in the
+context of a framework recently put forth for the scientific assessment
+of gene-diet interaction (Grimaldi et al. 2017). This genetic score was
+developed using a rigorous study design starting in an observational
+cohort an validating in a randomized trial, and relies on an
+``intermediate'' interaction in which not only the dietary intervention
+but also multiple other biological factors are expected to influence
+LDL-C concentrations. Given that the biological plausibility is
+difficult to determine for a polygenic score and that the scientific
+validity of this FRS x diet interaction would be classified as
+``possible'' to ``probable'', additional validation of this or similar
+scores would be needed to render it clinically actionable.
 
 There has been interest in the past in using main-effect genetic risk
 scores (GRS) as genetic variables in order to improve statistical power
-to detect gene-environment interactions (40). Such interactions may be
-viewed from a lens in which genetic risk corresponds to a predisposition
-that is only triggered in certain environments (e.g.~dietary behaviors).
-Here, we observed only a minor association of a main-effect GRS for
-LDL-C with greater LDL-C reductions in the DM trial (p=4.5e-27). This
-trend runs counter to a prior observation of greater lifestyle
-intervention effectiveness for LDL-C reduction in those with low genetic
-risk of hyperlipidemia (41). This discrepancy may be due to differences
-between the DM trial and the personalized diet and lifestyle changes
-recommended in the intervention in question. Regardless, the meaningful
-increase in predictive power of the GDI-based FRS compared to the
-main-effect GRS for LDL-C indicates the value in using interaction-based
-scores rather than simple genetic predispositions for the development of
-personalized dietary recommendations.
+to detect gene-environment interactions (Aschard 2016). Such
+interactions may be viewed from a lens in which genetic risk corresponds
+to a predisposition that is only triggered in certain environments
+(e.g.~dietary behaviors). Here, we observed only a minor association of
+a main-effect GRS for LDL-C with greater LDL-C reductions in the DM
+trial (p=1.9e-01). This trend runs counter to a prior observation of
+greater lifestyle intervention effectiveness for LDL-C reduction in
+those with low genetic risk of hyperlipidemia (Zubair et al. 2019). This
+discrepancy may be due to differences between the DM trial and the
+personalized diet and lifestyle changes recommended in the intervention
+in question. Regardless, the meaningful increase in predictive power of
+the FRS compared to the main-effect GRS for LDL-C indicates the value in
+using interaction-based scores rather than simple genetic
+predispositions for the development of personalized dietary
+recommendations.
 
 A diet response score such as that developed here is most useful if its
 value extends beyond just risk factor changes and predicts downstream
 changes in chronic disease and mortality risk. Suggestive interactions
 for CHD, ischemic stroke, and diabetes were apparent across strata
-(Figure 2a,b,d), corresponding to a decreased risk in fat-reduction
+(Figure 3A,B,D), corresponding to a decreased risk in fat-reduction
 participants (whose LDL-C would be expected to drop more prominently
 according to the score). In contrast, hemorrhagic stroke showed the
 opposite trend, with a positive score-disease relationship only in the
 fat reduction group. This result is in line with existing evidence for
-the detrimental effects of low LDL-C on hemorrhagic stroke risk (42).
-Non-CVD death showed no major associations, which could be expected due
-to the dominance of this category by cancer outcomes and the equivocal
-associations of cancer with lipids (43). We note that all disease
-outcome relationships assessed here are subject to the major caveat that
-dietary evolution and decreased adherence likely developed over time in
-many subjects, diluting the utility of the randomization and 1-year
-changes used for stratification in Figure 2.
+the detrimental effects of low LDL-C on hemorrhagic stroke risk (Sun et
+al. 2019). Non-CVD death showed no major associations, which could be
+expected due to the dominance of this category by cancer outcomes and
+the equivocal associations of cancer with lipids (Koene et al. 2016). We
+note that all disease outcome relationships assessed here are subject to
+the major caveat that dietary evolution and decreased adherence likely
+developed over time in many subjects, diluting the utility of the
+randomization and 1-year changes used for stratification in Figure 3.
 
-The present study had the advantage of developing a GDI-based dietary
-fat score in almost 10,000 women and testing in a dietary intervention
-trial using independent individuals from the same population. However,
-nominal main-effect SNPs were prioritized to improve statistical power
-given this moderate sample size, an approach which may fail to identify
+The present study had the advantage of developing a diet-focused genetic
+score in almost 10,000 women and testing in a dietary intervention trial
+using independent individuals from the same population. However, nominal
+main-effect SNPs were prioritized to improve statistical power given
+this moderate sample size, an approach which may fail to identify
 interactions with effect directions opposite that of the main effect.
 Smaller fractions of alternate ancestries in this population also made
 development of ancestry-specific response scores unrealistic.
 Additionally, the DM trial intervention in which the scores were tested
 may not exactly match the intervention relevant to the purely fat
 reduction-focused score developed here; it included additional
-non-fat-related dietary recommendations that may have effected the
+non-fat-related dietary recommendations that may have affected the
 interactions examined here, and did not ultimately achieve its intended
 20\% fat reduction. Finally, this study only examined women, despite the
 fact that CRF profiles and their genetic trait architectures are known
-to vary across sexes (44).
+to vary across sexes (Knopp et al. 2006).
 
 In summary, we present a method for the development of diet response
-scores based on genome-wide gene-diet interaction study summary
-statistics. While the resulting dietary fat response scores are not all
-informative, a score focused on LDL-C is predictive of 1-year LDL-C
-changes during a fat reduction trial. Its performance is risk
-factor-specific, and is superior to that of a main-effect genetic risk
-score for LDL-C. Furthermore, it displays suggestive relationships with
-chronic disease outcomes, following known coronary heart disease biology
-and adding a new perspective to known discrepancies between associations
-of LDL-C with cardiovascular disease and stroke subtypes. These findings
-support the utility of gene-diet interactions for personalized nutrition
-while highlighting the need for increased sample sizes and improved diet
-measures for the discovery of robust genetic predictors of diet
-response.
+scores based on genome-wide, observational gene-diet interaction study
+summary statistics. We provide proof-of-concept that a genetic score
+focused on LDL-C may be useful for predicting changes in both
+cardiometabolic risk factors and long-term disease risk during a dietary
+intervention. However, not all dietary fat response scores derived here
+were informative, highlighting the continued need for increased sample
+sizes and improved diet measures for the discovery of sufficiently
+robust genetic interactions genome-wide. Our results provide a
+foundation for future investigations using new datasets and dietary
+variables to explore the genetic architecture of diet response.
 
 \hypertarget{acknowledgements}{%
 \section{Acknowledgements}\label{acknowledgements}}
@@ -727,258 +804,339 @@ manuscript.
 \addcontentsline{toc}{section}{References}
 
 \hypertarget{refs}{}
-\leavevmode\hypertarget{ref-Ma2011}{}%
-1. Ma Q, Lu AYH. Pharmacogenetics, Pharmacogenomics, and Individualized
-Medicine. Pharmacological Reviews. 2011;63:437--59.
-
-\leavevmode\hypertarget{ref-Corella2013}{}%
-2. Corella D, Carrasco P, Sorli JV, Estruch R, Rico-Sanz J,
-Martinez-Gonzalez MA, Salas-Salvado J, Covas MI, Coltell O, Aros F, et
-al. Mediterranean Diet Reduces the Adverse Effect of the
-TCF7L2-rs7903146 Polymorphism on Cardiovascular Risk Factors and Stroke
-Incidence: A randomized controlled trial in a high-cardiovascular-risk
-population. Diabetes Care. 2013;36:3803--11.
-
-\leavevmode\hypertarget{ref-Huang2015}{}%
-3. Huang T, Huang J, Qi Q, Li Y, Bray GA, Rood J, Sacks FM, Qi L. PCSK7
-Genotype Modifies Effect of a Weight-Loss Diet on 2-Year Changes of
-Insulin Resistance: The POUNDS LOST Trial. Diabetes Care.
-2015;38:439--44.
-
-\leavevmode\hypertarget{ref-Ordovas2018}{}%
-4. Ordovas JM, Ferguson LR, Tai ES, Mathers JC. Personalised nutrition
-and health. BMJ. 2018;bmj.k2173.
-
-\leavevmode\hypertarget{ref-Corella2009}{}%
-5. Corella D. APOA2, Dietary Fat, and Body Mass Index. Archives of
-Internal Medicine. 2009;169:1897.
-
-\leavevmode\hypertarget{ref-Cuda2011}{}%
-6. Cuda C, Badawi A, Karmali M, El-Sohemy A. Polymorphisms in Toll-like
-receptor 4 are associated with factors of the metabolic syndrome and
-modify the association between dietary saturated fat and fasting
-high-density lipoprotein cholesterol. Metabolism. 2011;60:1131--5.
-
-\leavevmode\hypertarget{ref-Cornelis2006}{}%
-7. Cornelis MC, El-Sohemy A, Kabagambe EK, Campos H. Coffee, CYP1A2
-Genotype, and Risk of Myocardial Infarction. JAMA. 2006;295:1135.
-
-\leavevmode\hypertarget{ref-Qi2012}{}%
-8. Qi Q, Chu AY, Kang JH, Jensen MK, Curhan GC, Pasquale LR, Ridker PM,
-Hunter DJ, Willett WC, Rimm EB, et al. Sugar-Sweetened Beverages and
-Genetic Risk of Obesity. New England Journal of Medicine.
-2012;367:1387--96.
-
-\leavevmode\hypertarget{ref-Olsen2016}{}%
-9. Olsen NJ, Ängquist L, Larsen SC, Linneberg A, Skaaby T, Husemoen LLN,
-Toft U, Tjønneland A, Halkjær J, Hansen T, et al. Interactions between
-genetic variants associated with adiposity traits and soft drinks in
-relation to longitudinal changes in body weight and waist circumference.
-The American Journal of Clinical Nutrition. 2016;104:816--26.
-
-\leavevmode\hypertarget{ref-Smith2018}{}%
-10. Smith CE, Follis JL, Dashti HS, Tanaka T, Graff M, Fretts AM,
-Kilpeläinen TO, Wojczynski MK, Richardson K, Nalls MA, et al.
-Genome-Wide Interactions with Dairy Intake for Body Mass Index in Adults
-of European Descent. Molecular Nutrition \& Food Research.
-2018;62:1700347.
-
-\leavevmode\hypertarget{ref-Figueiredo2014}{}%
-11. Figueiredo JC, Hsu L, Hutter CM, Lin Y, Campbell PT, Baron JA,
-Berndt SI, Jiao S, Casey G, Fortini B, et al. Genome-Wide Diet-Gene
-Interaction Analyses for Risk of Colorectal Cancer. Amos CI, editor.
-PLoS Genetics. 2014;10:e1004228.
-
-\leavevmode\hypertarget{ref-Dempfle2008}{}%
-12. Dempfle A, Scherag A, Hein R, Beckmann L, Chang-Claude J, Schäfer H.
-Gene--environment interactions for complex traits: definitions,
-methodological requirements and challenges. European Journal of Human
-Genetics. 2008;16:1164--72.
-
 \leavevmode\hypertarget{ref-Anderson1998}{}%
-13. Anderson GL, Cummings SR, Freedman LS, Furberg C, Henderson MM,
-Johnson SR, Kuller LH, Manson JE, Oberman A, Prentice RL, et al. Design
-of the Women's Health Initiative Clinical Trial and Observational Study.
-Controlled Clinical Trials. 1998;19:61--109.
-
-\leavevmode\hypertarget{ref-Ritenbaugh2003}{}%
-14. Ritenbaugh C, Patterson RE, Chlebowski RT, Caan B, Fels-Tinker L,
-Howard B, Ockene J. The women's health initiative dietary modification
-trial: overview and baseline characteristics of participants. Annals of
-Epidemiology. 2003;13:S87--97.
-
-\leavevmode\hypertarget{ref-Patterson1999}{}%
-15. Patterson RE, Kristal AR, Tinker LF, Carter RA, Bolton MP,
-Agurs-Collins T. Measurement Characteristics of the Women's Health
-Initiative Food Frequency Questionnaire. Annals of Epidemiology.
-1999;9:178--87.
-
-\leavevmode\hypertarget{ref-Rao2017}{}%
-16. Rao DC, Sung YJ, Winkler TW, Schwander K, Borecki I, Cupples LA,
-Gauderman WJ, Rice K, Munroe PB, Psaty BM. Multiancestry Study of
-Gene--Lifestyle Interactions for Cardiovascular Traits in 610 475
-Individuals From 124 Cohorts. Circulation: Cardiovascular Genetics.
-2017;10.
-
-\leavevmode\hypertarget{ref-RCoreTeam2017}{}%
-17. R Core Team. R: A language and environment for statistical
-computing. {[}Internet{]}. Vienna, Austria: R Foundation for Statistical
-Computing; 2017. Available from: \url{https://www.r-project.org/}
-
-\leavevmode\hypertarget{ref-Chang2015}{}%
-18. Chang CC, Chow CC, Tellier LC, Vattikuti S, Purcell SM, Lee JJ.
-Second-generation PLINK: rising to the challenge of larger and richer
-datasets. GigaScience. 2015;4:7.
-
-\leavevmode\hypertarget{ref-Wang2010}{}%
-19. Wang K, Li M, Hakonarson H. ANNOVAR: functional annotation of
-genetic variants from high-throughput sequencing data. Nucleic Acids
-Research. 2010;38:e164--4.
-
-\leavevmode\hypertarget{ref-Gauderman2002}{}%
-20. Gauderman WJ. Sample Size Requirements for Association Studies of
-Gene-Gene Interaction. American Journal of Epidemiology.
-2002;155:478--84.
-
-\leavevmode\hypertarget{ref-Yengo2018}{}%
-21. Yengo L, Sidorenko J, Kemper KE, Zheng Z, Wood AR, Weedon MN,
-Frayling TM, Hirschhorn J, Yang J, Visscher PM. Meta-analysis of
-genome-wide association studies for height and body mass index in 700000
-individuals of European ancestry. Human Molecular Genetics.
-2018;27:3641--9.
-
-\leavevmode\hypertarget{ref-Ehret2011}{}%
-22. Ehret GB, Munroe PB, Rice KM, Bochud M, Johnson AD, Chasman DI,
-Smith AV, Tobin MD, Verwoert GC, Hwang SJ, et al. Genetic variants in
-novel pathways influence blood pressure and cardiovascular disease risk.
-Nature. 2011;478:103--9.
-
-\leavevmode\hypertarget{ref-Willer2013}{}%
-23. Willer CJ, Schmidt EM, Sengupta S, Peloso GM, Gustafsson S, Kanoni
-S, Ganna A, Chen J, Buchkovich ML, Mora S, et al. Discovery and
-refinement of loci associated with lipid levels. Nature Genetics.
-2013;45:1274--83.
-
-\leavevmode\hypertarget{ref-Dupuis2010}{}%
-24. Dupuis J, Langenberg C, Prokopenko I, Saxena R, Soranzo N, Jackson
-AU, Wheeler E, Glazer NL, Bouatia-Naji N, Gloyn AL, et al. New genetic
-loci implicated in fasting glucose homeostasis and their impact on type
-2 diabetes risk. Nature Genetics. 2010;42:105--16.
-
-\leavevmode\hypertarget{ref-Cha2018}{}%
-25. Cha S, Kang J, Lee J-H, Kim J, Kim H, Yang Y, Park W-Y, Kim J.
-Impact of Genetic Variants on the Individual Potential for Body Fat
-Loss. Nutrients. 2018;10:266.
-
-\leavevmode\hypertarget{ref-Munda2014}{}%
-26. Munda M, Legrand C. Adjusting for centre heterogeneity in
-multicentre clinical trials with a time-to-event outcome. Pharmaceutical
-Statistics. 2014;13:145--52.
-
-\leavevmode\hypertarget{ref-Thompson2009}{}%
-27. Thompson JF, Hyde CL, Wood LS, Paciga SA, Hinds DA, Cox DR, Hovingh
-GK, Kastelein JJ. Comprehensive Whole-Genome and Candidate Gene Analysis
-for Response to Statin Therapy in the Treating to New Targets (TNT)
-Cohort. Circulation: Cardiovascular Genetics. 2009;2:173--81.
-
-\leavevmode\hypertarget{ref-Bell2012}{}%
-28. Bell JT, Tsai P-C, Yang T-P, Pidsley R, Nisbet J, Glass D, Mangino
-M, Zhai G, Zhang F, Valdes A, et al. Epigenome-Wide Scans Identify
-Differentially Methylated Regions for Age and Age-Related Phenotypes in
-a Healthy Ageing Population. Li J, editor. PLoS Genetics.
-2012;8:e1002629.
-
-\leavevmode\hypertarget{ref-Perfilyev2017}{}%
-29. Perfilyev A, Dahlman I, Gillberg L, Rosqvist F, Iggman D, Volkov P,
-Nilsson E, Risérus U, Ling C. Impact of polyunsaturated and saturated
-fat overfeeding on the DNA-methylation pattern in human adipose tissue:
-a randomized controlled trial. The American Journal of Clinical
-Nutrition. American Society for Nutrition; 2017;105:991--1000.
-
-\leavevmode\hypertarget{ref-Pei2013}{}%
-30. Pei Q, Huang Q, Yang G-p, Zhao Y-c, Yin J-y, Song M, Zheng Y, Mo
-Z-h, Zhou H-h, Liu Z-q. PPAR-\(\gamma\)2 and PTPRD gene polymorphisms
-influence type 2 diabetes patients' response to pioglitazone in China.
-Acta Pharmacologica Sinica. 2013;34:255--61.
-
-\leavevmode\hypertarget{ref-Comuzzie2012}{}%
-31. Comuzzie AG, Cole SA, Laston SL, Voruganti VS, Haack K, Gibbs RA,
-Butte NF. Novel Genetic Loci Identified for the Pathophysiology of
-Childhood Obesity in the Hispanic Population. Crawford DC, editor. PLoS
-ONE. 2012;7:e51954.
-
-\leavevmode\hypertarget{ref-Spracklen2017}{}%
-32. Spracklen CN, Chen P, Kim YJ, Wang X, Cai H, Li S, Long J, Wu Y,
-Wang YX, Takeuchi F, et al. Association analyses of East Asian
-individuals and trans-ancestry analyses with European individuals reveal
-new loci associated with cholesterol and triglyceride levels. Human
-Molecular Genetics. 2017;26:1770--84.
-
-\leavevmode\hypertarget{ref-Cuda2012}{}%
-33. Badawi A, Cuda, Garcia-Bailo, Karmali, El-Sohemy. A common
-polymorphism near the interleukin-6 gene modifies the association
-between dietary fat intake and insulin sensitivity. Journal of
-Inflammation Research. 2012;1.
-
-\leavevmode\hypertarget{ref-Zheng2015}{}%
-34. Zheng Y, Huang T, Zhang X, Rood J, Bray GA, Sacks FM, Qi L. Dietary
-Fat Modifies the Effects of FTO Genotype on Changes in Insulin
-Sensitivity. The Journal of Nutrition. 2015;145:977--82.
-
-\leavevmode\hypertarget{ref-Ordovas2011}{}%
-35. Ordovás JM, Robertson R, Cléirigh EN. Gene--gene and
-gene--environment interactions defining lipid-related traits. Current
-Opinion in Lipidology. 2011;22:129--36.
-
-\leavevmode\hypertarget{ref-Saito2004}{}%
-36. Saito M, Eto M, Nitta H, Kanda Y, Shigeto M, Nakayama K, Tawaramoto
-K, Kawasaki F, Kamei S, Kohara K, et al. Effect of Apolipoprotein E4
-Allele on Plasma LDL Cholesterol Response to Diet Therapy in Type 2
-Diabetic Patients. Diabetes Care. 2004;27:1276--80.
-
-\leavevmode\hypertarget{ref-Zhang2012}{}%
-37. Zhang X, Qi Q, Bray GA, Hu FB, Sacks FM, Qi L. APOA5 genotype
-modulates 2-y changes in lipid profile in response to weight-loss diet
-intervention: the Pounds Lost Trial. The American Journal of Clinical
-Nutrition. 2012;96:917--22.
-
-\leavevmode\hypertarget{ref-Xu2015}{}%
-38. Xu M, Ng SS, Bray GA, Ryan DH, Sacks FM, Ning G, Qi L. Dietary Fat
-Intake Modifies the Effect of a Common Variant in the LIPC Gene on
-Changes in Serum Lipid Concentrations during a Long-Term Weight-Loss
-Intervention Trial. The Journal of Nutrition. 2015;145:1289--94.
-
-\leavevmode\hypertarget{ref-Khera2018}{}%
-39. Khera AV, Chaffin M, Aragam KG, Haas ME, Roselli C, Choi SH,
-Natarajan P, Lander ES, Lubitz SA, Ellinor PT, et al. Genome-wide
-polygenic scores for common diseases identify individuals with risk
-equivalent to monogenic mutations. Nature Genetics. 2018;50:1219--24.
+Anderson, Garnet L, Steven R Cummings, Laurence S Freedman, Curt
+Furberg, Maureen M Henderson, Susan R Johnson, Lewis H Kuller, et al.
+1998. ``Design of the Women's Health Initiative Clinical Trial and
+Observational Study.'' \emph{Controlled Clinical Trials} 19 (1):
+61--109. \url{https://doi.org/10.1016/S0197-2456(97)00078-0}.
 
 \leavevmode\hypertarget{ref-Aschard2016}{}%
-40. Aschard H. A perspective on interaction effects in genetic
-association studies. Genetic Epidemiology. 2016;40:678--88.
+Aschard, Hugues. 2016. ``A perspective on interaction effects in genetic
+association studies.'' \emph{Genetic Epidemiology} 40 (8): 678--88.
+\url{https://doi.org/10.1002/gepi.21989}.
 
-\leavevmode\hypertarget{ref-Zubair2019}{}%
-41. Zubair N, Conomos MP, Hood L, Omenn GS, Price ND, Spring BJ, Magis
-AT, Lovejoy JC. Genetic Predisposition Impacts Clinical Changes in a
-Lifestyle Coaching Program. Scientific Reports. 2019;9:6805.
+\leavevmode\hypertarget{ref-Cuda2012}{}%
+Badawi, Alaa, Cuda, Garcia-Bailo, Karmali, and El-Sohemy. 2012. ``A
+common polymorphism near the interleukin-6 gene modifies the association
+between dietary fat intake and insulin sensitivity.'' \emph{Journal of
+Inflammation Research}, January, 1.
+\url{https://doi.org/10.2147/JIR.S27911}.
 
-\leavevmode\hypertarget{ref-Sun2019a}{}%
-42. Sun L, Clarke R, Bennett D, Guo Y, Walters RG, Hill M, Parish S,
-Millwood IY, Bian Z, Chen Y, et al. Causal associations of blood lipids
-with risk of ischemic stroke and intracerebral hemorrhage in Chinese
-adults. Nature Medicine. 2019;25:569--74.
+\leavevmode\hypertarget{ref-Barnett2005}{}%
+Barnett, Adrian G., Jolieke C. van der Pols, and Annette J. Dobson.
+2005. ``Regression to the mean: what it is and how to deal with it.''
+\emph{International Journal of Epidemiology} 34 (1): 215--20.
+\url{https://doi.org/10.1093/ije/dyh299}.
 
-\leavevmode\hypertarget{ref-Koene2016}{}%
-43. Koene RJ, Prizment AE, Blaes A, Konety SH. Shared Risk Factors in
-Cardiovascular Disease and Cancer. Circulation. 2016;133:1104--14.
+\leavevmode\hypertarget{ref-Bell2012}{}%
+Bell, Jordana T., Pei-Chien Tsai, Tsun-Po Yang, Ruth Pidsley, James
+Nisbet, Daniel Glass, Massimo Mangino, et al. 2012. ``Epigenome-Wide
+Scans Identify Differentially Methylated Regions for Age and Age-Related
+Phenotypes in a Healthy Ageing Population.'' Edited by Jun Li.
+\emph{PLoS Genetics} 8 (4): e1002629.
+\url{https://doi.org/10.1371/journal.pgen.1002629}.
+
+\leavevmode\hypertarget{ref-Cha2018}{}%
+Cha, Soyeon, Joon Kang, Jae-Hak Lee, Jinki Kim, Heewon Kim, Yoon Yang,
+Woong-Yang Park, and Jinho Kim. 2018. ``Impact of Genetic Variants on
+the Individual Potential for Body Fat Loss.'' \emph{Nutrients} 10 (3):
+266. \url{https://doi.org/10.3390/nu10030266}.
+
+\leavevmode\hypertarget{ref-Chang2015}{}%
+Chang, Christopher C., Carson C. Chow, Laurent C.A.M. Tellier, Shashaank
+Vattikuti, Shaun M. Purcell, and James J. Lee. 2015. ``Second-generation
+PLINK: rising to the challenge of larger and richer datasets.''
+\emph{GigaScience} 4 (1): 7.
+\url{https://doi.org/10.1186/s13742-015-0047-8}.
+
+\leavevmode\hypertarget{ref-Comuzzie2012}{}%
+Comuzzie, Anthony G, Shelley A Cole, Sandra L Laston, V Saroja
+Voruganti, Karin Haack, Richard A Gibbs, and Nancy F Butte. 2012.
+``Novel Genetic Loci Identified for the Pathophysiology of Childhood
+Obesity in the Hispanic Population.'' Edited by Dana C. Crawford.
+\emph{PLoS ONE} 7 (12): e51954.
+\url{https://doi.org/10.1371/journal.pone.0051954}.
+
+\leavevmode\hypertarget{ref-Corella2013}{}%
+Corella, D., P. Carrasco, J. V. Sorli, R. Estruch, J. Rico-Sanz, M. A.
+Martinez-Gonzalez, J. Salas-Salvado, et al. 2013. ``Mediterranean Diet
+Reduces the Adverse Effect of the TCF7L2-rs7903146 Polymorphism on
+Cardiovascular Risk Factors and Stroke Incidence: A randomized
+controlled trial in a high-cardiovascular-risk population.''
+\emph{Diabetes Care} 36 (11): 3803--11.
+\url{https://doi.org/10.2337/dc13-0955}.
+
+\leavevmode\hypertarget{ref-Corella2009}{}%
+Corella, Dolores. 2009. ``APOA2, Dietary Fat, and Body Mass Index.''
+\emph{Archives of Internal Medicine} 169 (20): 1897.
+\url{https://doi.org/10.1001/archinternmed.2009.343}.
+
+\leavevmode\hypertarget{ref-Cornelis2006}{}%
+Cornelis, Marilyn C., Ahmed El-Sohemy, Edmond K. Kabagambe, and Hannia
+Campos. 2006. ``Coffee, CYP1A2 Genotype, and Risk of Myocardial
+Infarction.'' \emph{JAMA} 295 (10): 1135.
+\url{https://doi.org/10.1001/jama.295.10.1135}.
+
+\leavevmode\hypertarget{ref-Cuda2011}{}%
+Cuda, Cristina, Alaa Badawi, Mohamed Karmali, and Ahmed El-Sohemy. 2011.
+``Polymorphisms in Toll-like receptor 4 are associated with factors of
+the metabolic syndrome and modify the association between dietary
+saturated fat and fasting high-density lipoprotein cholesterol.''
+\emph{Metabolism} 60 (8): 1131--5.
+\url{https://doi.org/10.1016/j.metabol.2010.12.006}.
+
+\leavevmode\hypertarget{ref-Dempfle2008}{}%
+Dempfle, Astrid, André Scherag, Rebecca Hein, Lars Beckmann, Jenny
+Chang-Claude, and Helmut Schäfer. 2008. ``Gene--environment interactions
+for complex traits: definitions, methodological requirements and
+challenges.'' \emph{European Journal of Human Genetics} 16 (10):
+1164--72. \url{https://doi.org/10.1038/ejhg.2008.106}.
+
+\leavevmode\hypertarget{ref-Dupuis2010}{}%
+Dupuis, Josée, Claudia Langenberg, Inga Prokopenko, Richa Saxena, Nicole
+Soranzo, Anne U. Jackson, Eleanor Wheeler, et al. 2010. ``New genetic
+loci implicated in fasting glucose homeostasis and their impact on type
+2 diabetes risk.'' \emph{Nature Genetics} 42 (2): 105--16.
+\url{https://doi.org/10.1038/ng.520}.
+
+\leavevmode\hypertarget{ref-Ehret2011}{}%
+Ehret, Georg B., Patricia B. Munroe, Kenneth M. Rice, Murielle Bochud,
+Andrew D. Johnson, Daniel I. Chasman, Albert V. Smith, et al. 2011.
+``Genetic variants in novel pathways influence blood pressure and
+cardiovascular disease risk.'' \emph{Nature} 478 (7367): 103--9.
+\url{https://doi.org/10.1038/nature10405}.
+
+\leavevmode\hypertarget{ref-Figueiredo2014}{}%
+Figueiredo, Jane C., Li Hsu, Carolyn M. Hutter, Yi Lin, Peter T.
+Campbell, John A. Baron, Sonja I. Berndt, et al. 2014. ``Genome-Wide
+Diet-Gene Interaction Analyses for Risk of Colorectal Cancer.'' Edited
+by Christopher I. Amos. \emph{PLoS Genetics} 10 (4): e1004228.
+\url{https://doi.org/10.1371/journal.pgen.1004228}.
+
+\leavevmode\hypertarget{ref-Gauderman2002}{}%
+Gauderman, W. J. 2002. ``Sample Size Requirements for Association
+Studies of Gene-Gene Interaction.'' \emph{American Journal of
+Epidemiology} 155 (5): 478--84.
+\url{https://doi.org/10.1093/aje/155.5.478}.
+
+\leavevmode\hypertarget{ref-Grimaldi2017}{}%
+Grimaldi, Keith A., Ben van Ommen, Jose M. Ordovas, Laurence D. Parnell,
+John C. Mathers, Igor Bendik, Lorraine Brennan, et al. 2017. ``Proposed
+guidelines to evaluate scientific validity and evidence for
+genotype-based dietary advice.'' \emph{Genes \& Nutrition} 12 (1): 35.
+\url{https://doi.org/10.1186/s12263-017-0584-0}.
+
+\leavevmode\hypertarget{ref-Huang2015}{}%
+Huang, Tao, Jinyan Huang, Qibin Qi, Yanping Li, George A. Bray, Jennifer
+Rood, Frank M. Sacks, and Lu Qi. 2015. ``PCSK7 Genotype Modifies Effect
+of a Weight-Loss Diet on 2-Year Changes of Insulin Resistance: The
+POUNDS LOST Trial.'' \emph{Diabetes Care} 38 (3): 439--44.
+\url{https://doi.org/10.2337/dc14-0473}.
+
+\leavevmode\hypertarget{ref-Khera2018}{}%
+Khera, Amit V., Mark Chaffin, Krishna G. Aragam, Mary E. Haas, Carolina
+Roselli, Seung Hoan Choi, Pradeep Natarajan, et al. 2018. ``Genome-wide
+polygenic scores for common diseases identify individuals with risk
+equivalent to monogenic mutations.'' \emph{Nature Genetics} 50 (9):
+1219--24. \url{https://doi.org/10.1038/s41588-018-0183-z}.
 
 \leavevmode\hypertarget{ref-Knopp2006}{}%
-44. Knopp RH, Paramsothy P, Retzlaff BM, Fish B, Walden C, Dowdy A,
-Tsunehara C, Aikawa K, Cheung MC. Sex differences in lipoprotein
-metabolism and dietary response: Basis in hormonal differences and
-implications for cardiovascular disease. Current Cardiology Reports.
-2006;8:452--9.
+Knopp, Robert H., Pathmaja Paramsothy, Barbara M. Retzlaff, Brian Fish,
+Carolyn Walden, Alice Dowdy, Christine Tsunehara, Keiko Aikawa, and
+Marian C. Cheung. 2006. ``Sex differences in lipoprotein metabolism and
+dietary response: Basis in hormonal differences and implications for
+cardiovascular disease.'' \emph{Current Cardiology Reports} 8 (6):
+452--59. \url{https://doi.org/10.1007/s11886-006-0104-0}.
+
+\leavevmode\hypertarget{ref-Koene2016}{}%
+Koene, Ryan J, Anna E Prizment, Anne Blaes, and Suma H Konety. 2016.
+``Shared Risk Factors in Cardiovascular Disease and Cancer.''
+\emph{Circulation} 133 (11): 1104--14.
+\url{https://doi.org/10.1161/CIRCULATIONAHA.115.020406}.
+
+\leavevmode\hypertarget{ref-Ma2011}{}%
+Ma, Q., and A. Y. H. Lu. 2011. ``Pharmacogenetics, Pharmacogenomics, and
+Individualized Medicine.'' \emph{Pharmacological Reviews} 63 (2):
+437--59. \url{https://doi.org/10.1124/pr.110.003533}.
+
+\leavevmode\hypertarget{ref-Munda2014}{}%
+Munda, Marco, and Catherine Legrand. 2014. ``Adjusting for centre
+heterogeneity in multicentre clinical trials with a time-to-event
+outcome.'' \emph{Pharmaceutical Statistics} 13 (2): 145--52.
+\url{https://doi.org/10.1002/pst.1612}.
+
+\leavevmode\hypertarget{ref-Newton-Cheh2009}{}%
+Newton-Cheh, Christopher, Toby Johnson, Vesela Gateva, Martin D. Tobin,
+Murielle Bochud, Lachlan Coin, Samer S. Najjar, et al. 2009.
+``Genome-wide association study identifies eight loci associated with
+blood pressure.'' \emph{Nature Genetics} 41 (6): 666--76.
+\url{https://doi.org/10.1038/ng.361}.
+
+\leavevmode\hypertarget{ref-ODonovan2015}{}%
+O'Donovan, Clare B., Marianne C. Walsh, Anne P. Nugent, Breige McNulty,
+Janette Walton, Albert Flynn, Michael J. Gibney, Eileen R. Gibney, and
+Lorraine Brennan. 2015. ``Use of metabotyping for the delivery of
+personalised nutrition.'' \emph{Molecular Nutrition \& Food Research} 59
+(3): 377--85. \url{https://doi.org/10.1002/mnfr.201400591}.
+
+\leavevmode\hypertarget{ref-Olsen2016}{}%
+Olsen, Nanna J., Lars Ängquist, Sofus C. Larsen, Allan Linneberg, Tea
+Skaaby, Lise Lotte N. Husemoen, Ulla Toft, et al. 2016. ``Interactions
+between genetic variants associated with adiposity traits and soft
+drinks in relation to longitudinal changes in body weight and waist
+circumference.'' \emph{The American Journal of Clinical Nutrition} 104
+(3): 816--26. \url{https://doi.org/10.3945/ajcn.115.122820}.
+
+\leavevmode\hypertarget{ref-Ordovas2018}{}%
+Ordovas, Jose M., Lynnette R. Ferguson, E. Shyong Tai, and John C.
+Mathers. 2018. ``Personalised nutrition and health.'' \emph{BMJ}, June,
+bmj.k2173. \url{https://doi.org/10.1136/bmj.k2173}.
+
+\leavevmode\hypertarget{ref-Ordovas2011}{}%
+Ordovás, José M., Ruairi Robertson, and Ellen Ní Cléirigh. 2011.
+``Gene--gene and gene--environment interactions defining lipid-related
+traits.'' \emph{Current Opinion in Lipidology} 22 (2): 129--36.
+\url{https://doi.org/10.1097/MOL.0b013e32834477a9}.
+
+\leavevmode\hypertarget{ref-Patterson1999}{}%
+Patterson, Ruth E., Alan R. Kristal, Lesley Fels Tinker, Rachel A.
+Carter, Mary Pat Bolton, and Tanya Agurs-Collins. 1999. ``Measurement
+Characteristics of the Women's Health Initiative Food Frequency
+Questionnaire.'' \emph{Annals of Epidemiology} 9 (3): 178--87.
+\url{https://doi.org/10.1016/S1047-2797(98)00055-6}.
+
+\leavevmode\hypertarget{ref-Pei2013}{}%
+Pei, Qi, Qiong Huang, Guo-ping Yang, Ying-chun Zhao, Ji-ye Yin, Min
+Song, Yi Zheng, Zhao-hui Mo, Hong-hao Zhou, and Zhao-qian Liu. 2013.
+``PPAR-\(\gamma\)2 and PTPRD gene polymorphisms influence type 2
+diabetes patients' response to pioglitazone in China.'' \emph{Acta
+Pharmacologica Sinica} 34 (2): 255--61.
+\url{https://doi.org/10.1038/aps.2012.144}.
+
+\leavevmode\hypertarget{ref-Perfilyev2017}{}%
+Perfilyev, Alexander, Ingrid Dahlman, Linn Gillberg, Fredrik Rosqvist,
+David Iggman, Petr Volkov, Emma Nilsson, Ulf Risérus, and Charlotte
+Ling. 2017. ``Impact of polyunsaturated and saturated fat overfeeding on
+the DNA-methylation pattern in human adipose tissue: a randomized
+controlled trial.'' \emph{The American Journal of Clinical Nutrition}
+105 (4). American Society for Nutrition: 991--1000.
+\url{https://doi.org/10.3945/ajcn.116.143164}.
+
+\leavevmode\hypertarget{ref-Qi2012}{}%
+Qi, Qibin, Audrey Y. Chu, Jae H. Kang, Majken K. Jensen, Gary C. Curhan,
+Louis R. Pasquale, Paul M. Ridker, et al. 2012. ``Sugar-Sweetened
+Beverages and Genetic Risk of Obesity.'' \emph{New England Journal of
+Medicine} 367 (15): 1387--96.
+\url{https://doi.org/10.1056/NEJMoa1203039}.
+
+\leavevmode\hypertarget{ref-Rao2017}{}%
+Rao, D. C., Yun J. Sung, Thomas W. Winkler, Karen Schwander, Ingrid
+Borecki, L. Adrienne Cupples, W. James Gauderman, Kenneth Rice, Patricia
+B. Munroe, and Bruce M. Psaty. 2017. ``Multiancestry Study of
+Gene--Lifestyle Interactions for Cardiovascular Traits in 610 475
+Individuals From 124 Cohorts.'' \emph{Circulation: Cardiovascular
+Genetics} 10 (3): e001649.
+\url{https://doi.org/10.1161/CIRCGENETICS.116.001649}.
+
+\leavevmode\hypertarget{ref-RCoreTeam2017}{}%
+R Core Team. 2017. ``R: A language and environment for statistical
+computing.'' Vienna, Austria: R Foundation for Statistical Computing.
+\url{https://www.r-project.org/}.
+
+\leavevmode\hypertarget{ref-Ritenbaugh2003}{}%
+Ritenbaugh, Cheryl, Ruth E Patterson, Rowan T Chlebowski, Bette Caan,
+Lesley Fels-Tinker, Barbara Howard, and Judy Ockene. 2003. ``The women's
+health initiative dietary modification trial: overview and baseline
+characteristics of participants.'' \emph{Annals of Epidemiology} 13 (9):
+S87--S97. \url{https://doi.org/10.1016/S1047-2797(03)00044-9}.
+
+\leavevmode\hypertarget{ref-Saito2004}{}%
+Saito, Mieko, Masaaki Eto, Hayami Nitta, Yukiko Kanda, Makoto Shigeto,
+Katsura Nakayama, Kazuhito Tawaramoto, et al. 2004. ``Effect of
+Apolipoprotein E4 Allele on Plasma LDL Cholesterol Response to Diet
+Therapy in Type 2 Diabetic Patients.'' \emph{Diabetes Care} 27 (6):
+1276--80. \url{https://doi.org/10.2337/diacare.27.6.1276}.
+
+\leavevmode\hypertarget{ref-Smith2018}{}%
+Smith, Caren E., Jack L. Follis, Hassan S. Dashti, Toshiko Tanaka,
+Mariaelisa Graff, Amanda M. Fretts, Tuomas O. Kilpeläinen, et al. 2018.
+``Genome-Wide Interactions with Dairy Intake for Body Mass Index in
+Adults of European Descent.'' \emph{Molecular Nutrition \& Food
+Research} 62 (3): 1700347. \url{https://doi.org/10.1002/mnfr.201700347}.
+
+\leavevmode\hypertarget{ref-Spracklen2017}{}%
+Spracklen, Cassandra N., Peng Chen, Young Jin Kim, Xu Wang, Hui Cai,
+Shengxu Li, Jirong Long, et al. 2017. ``Association analyses of East
+Asian individuals and trans-ancestry analyses with European individuals
+reveal new loci associated with cholesterol and triglyceride levels.''
+\emph{Human Molecular Genetics} 26 (9): 1770--84.
+\url{https://doi.org/10.1093/hmg/ddx062}.
+
+\leavevmode\hypertarget{ref-Sun2019a}{}%
+Sun, Luanluan, Robert Clarke, Derrick Bennett, Yu Guo, Robin G. Walters,
+Michael Hill, Sarah Parish, et al. 2019. ``Causal associations of blood
+lipids with risk of ischemic stroke and intracerebral hemorrhage in
+Chinese adults.'' \emph{Nature Medicine} 25 (4): 569--74.
+\url{https://doi.org/10.1038/s41591-019-0366-x}.
+
+\leavevmode\hypertarget{ref-Thompson2009}{}%
+Thompson, John F., Craig L. Hyde, Linda S. Wood, Sara A. Paciga, David
+A. Hinds, David R. Cox, G. Kees Hovingh, and John J.P. Kastelein. 2009.
+``Comprehensive Whole-Genome and Candidate Gene Analysis for Response to
+Statin Therapy in the Treating to New Targets (TNT) Cohort.''
+\emph{Circulation: Cardiovascular Genetics} 2 (2): 173--81.
+\url{https://doi.org/10.1161/CIRCGENETICS.108.818062}.
+
+\leavevmode\hypertarget{ref-Wang2010}{}%
+Wang, Kai, Mingyao Li, and Hakon Hakonarson. 2010. ``ANNOVAR: functional
+annotation of genetic variants from high-throughput sequencing data.''
+\emph{Nucleic Acids Research} 38 (16): e164--e164.
+\url{https://doi.org/10.1093/nar/gkq603}.
+
+\leavevmode\hypertarget{ref-Willer2013}{}%
+Willer, Cristen J., Ellen M. Schmidt, Sebanti Sengupta, Gina M. Peloso,
+Stefan Gustafsson, Stavroula Kanoni, Andrea Ganna, et al. 2013.
+``Discovery and refinement of loci associated with lipid levels.''
+\emph{Nature Genetics} 45 (11): 1274--83.
+\url{https://doi.org/10.1038/ng.2797}.
+
+\leavevmode\hypertarget{ref-Xu2015}{}%
+Xu, Min, San San Ng, George A Bray, Donna H Ryan, Frank M Sacks, Guang
+Ning, and Lu Qi. 2015. ``Dietary Fat Intake Modifies the Effect of a
+Common Variant in the LIPC Gene on Changes in Serum Lipid Concentrations
+during a Long-Term Weight-Loss Intervention Trial.'' \emph{The Journal
+of Nutrition} 145 (6): 1289--94.
+\url{https://doi.org/10.3945/jn.115.212514}.
+
+\leavevmode\hypertarget{ref-Yengo2018}{}%
+Yengo, Loic, Julia Sidorenko, Kathryn E. Kemper, Zhili Zheng, Andrew R.
+Wood, Michael N. Weedon, Timothy M. Frayling, Joel Hirschhorn, Jian
+Yang, and Peter M. Visscher. 2018. ``Meta-analysis of genome-wide
+association studies for height and body mass index in 700000 individuals
+of European ancestry.'' \emph{Human Molecular Genetics} 27 (20):
+3641--9. \url{https://doi.org/10.1093/hmg/ddy271}.
+
+\leavevmode\hypertarget{ref-Zhang2012}{}%
+Zhang, Xiaomin, Qibin Qi, George A. Bray, Frank B. Hu, Frank M. Sacks,
+and Lu Qi. 2012. ``APOA5 genotype modulates 2-y changes in lipid profile
+in response to weight-loss diet intervention: the Pounds Lost Trial.''
+\emph{The American Journal of Clinical Nutrition} 96 (4): 917--22.
+\url{https://doi.org/10.3945/ajcn.112.040907}.
+
+\leavevmode\hypertarget{ref-Zheng2015}{}%
+Zheng, Yan, Tao Huang, Xiaomin Zhang, Jennifer Rood, George A Bray,
+Frank M Sacks, and Lu Qi. 2015. ``Dietary Fat Modifies the Effects of
+FTO Genotype on Changes in Insulin Sensitivity.'' \emph{The Journal of
+Nutrition} 145 (5): 977--82.
+\url{https://doi.org/10.3945/jn.115.210005}.
+
+\leavevmode\hypertarget{ref-Zubair2019}{}%
+Zubair, Niha, Matthew P. Conomos, Leroy Hood, Gilbert S. Omenn, Nathan
+D. Price, Bonnie J. Spring, Andrew T. Magis, and Jennifer C. Lovejoy.
+2019. ``Genetic Predisposition Impacts Clinical Changes in a Lifestyle
+Coaching Program.'' \emph{Scientific Reports} 9 (1): 6805.
+\url{https://doi.org/10.1038/s41598-019-43058-0}.
 
 
 \end{document}

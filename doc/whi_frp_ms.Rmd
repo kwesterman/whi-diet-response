@@ -1,14 +1,14 @@
 ---
 output: 
-  pdf_document:
-    # citation_package: natbibm
-    keep_tex: true
-    fig_caption: true
-    latex_engine: pdflatex
-  #   # template: ~/Dropbox/miscelanea/svm-r-markdown-templates/svm-latex-ms.tex
-  # word_document:
+  # pdf_document:
+  #   # citation_package: natbibm
+  #   keep_tex: true
   #   fig_caption: true
-  #   reference_docx: word-styles-reference.docx
+  #   latex_engine: pdflatex
+  #   # template: ~/Dropbox/miscelanea/svm-r-markdown-templates/svm-latex-ms.tex
+  word_document:
+    fig_caption: true
+    reference_docx: word-styles-reference.docx
 always_allow_html: true
 title: "A gene-diet interaction-based score predicts response to dietary fat in the Women's Health Initiative"
 bibliography: whi_frp_ms.bib
@@ -17,7 +17,7 @@ csl: ajcn.csl
 
 ```{r setup, include=F}
 knitr::opts_chunk$set(echo=F, fig.path="figures/")
-# options(kableExtra.auto_format = FALSE)
+options(kableExtra.auto_format = FALSE)
 suppressMessages(silent <- lapply(
   c("knitr", "kableExtra", "tidyverse", "broom", "cowplot",
     "jtools", "ggstance"), 
@@ -102,68 +102,63 @@ pretty_rfs <- c(bmi="BMI", sbp="SBP", ldl="LDL-C", hdl="HDL-C", tg="TG", glu="FG
 
 # Abstract
 
-**Background:** While diet response prediction for cardiometabolic risk factors (CRFs) has been demonstrated using single SNPs and main-effect genetic risk scores, little investigation has gone into the development of genome-wide diet response scores. 
+**Background:** While diet response prediction for cardiometabolic risk factors (CRFs) has been demonstrated using single genetic variants and main-effect genetic risk scores, little investigation has gone into the development of genome-wide diet response scores. 
 
 **Objective:** Here, we sought to leverage the multi-study setup of the Women's Health Initiative cohort to generate and test genetic scores for the response of six CRFs (body mass index, systolic blood pressure, LDL-cholesterol, HDL-cholesterol, triglycerides, and fasting glucose) to dietary fat. 
 
-**Design:** A genome-wide interaction study was undertaken for each CRF in women (n ~ 10000) not participating in the Dietary Modification (DM) trial, which focused on the reduction of dietary fat. Genetic scores based on these analyses were developed using a pruning-and-thresholding approach and tested for the prediction of one-year CRF changes as well as long-term chronic disease development in DM trial participants (n ~ 5000). 
+**Design:** A genome-wide interaction study was undertaken for each CRF in women (n ~ 9000) not participating in the Dietary Modification (DM) trial, which focused on the reduction of dietary fat. Genetic scores based on these analyses were developed using a pruning-and-thresholding approach and tested for the prediction of one-year CRF changes as well as long-term chronic disease development in DM trial participants (n ~ 5000). 
 
-**Results:** Only one of these genetic scores, for LDL-cholesterol (LDL-C), predicted changes in the associated CRF. This 1760-variant score explained 3.4% of the variance in one-year LDL-C changes in the intervention arm, but was unassociated with changes in the control arm. In contrast, a main-effect genetic risk score for LDL-C was not useful for predicting dietary fat response. Further investigation of this score with respect to downstream disease outcomes revealed suggestive differential associations across DM trial arms, especially with respect to coronary heart disease and stroke subtypes. 
+**Results:** Only one of these genetic scores, for LDL-cholesterol (LDL-C), predicted changes in the associated CRF. This 1760-variant score explained 3.7% of the variance in one-year LDL-C changes in the intervention arm, but was unassociated with changes in the control arm. In contrast, a main-effect genetic risk score for LDL-C was not useful for predicting dietary fat response. Further investigation of this score with respect to downstream disease outcomes revealed suggestive differential associations across DM trial arms, especially with respect to coronary heart disease and stroke subtypes. 
 
 **Conclusions:** These results lay the foundation for the combination of many genome-wide gene-diet interactions for diet response prediction while highlighting the need for further research and larger samples in order to achieve robust biomarkers for use in personalized nutrition.
 
 # Introduction
 
-<!--
-* Para. 1: GxE central to the hype that has shown promise in particular applications....personalized nutrition!!
-    - The emergence of gene-diet interactions (GDI) studies, along with specific well-replicated examples [@Corella___] have provided suggestions that genome-guided personalized nutrition can become a reality.
-    - Many GDIs have focused in the cardiometabolic realm. Typically, these focus on cardiometabolic risk factors based on biology-based candidate genes/variants (pick a study from Jose, Lu Qi, and caffeine), but some have looked at actual outcomes (e.g. MI [@Cornelis2006]). Other approaches use main-effect genetic risk scores, such as that for obesity interacting with sugar-sweetened beverage intake to influence anthropometric traits [@Qi2012; @Olsen2016].
-
-* Para. 2: However, to translate GxE into the most effective risk scores, 3 elements will be necessary:
-    1. Replicable (find some review or similar that discusses lack of reproducibility and difficulty across populations)
-    2. Genome-wide (mention that up until now most investigations are either few-gene hypothesis-based or genome-wide main effect scores)
-    3. Causal/applicable to changes in RF based on change in dietary intake
--->
-
 Nutrigenetics approaches, in which genetic information is used to predict response to dietary inputs, are central to the emerging promise of personalized nutrition for cardiometabolic risk reduction. Inter-individual differences in food preferences, metabolism, detoxification, excretion, etc. affect our responses to diet, in a similar manner to the well-studied field of pharmacogenomics [@Ma2011]. Ideally, genotype-based nutrigenetic investigations would be conducted in large-scale dietary interventions. Two notable examples are the PREDIMED and POUNDS LOST trial, with significant findings including the interaction of a *TCF7L2* variant with a Mediterranean diet pattern for glycemic traits [@Corella2013] and the interaction of a *PCSK9* variant with dietary carbohydrate for insulin resistance [@Huang2015]. However, such intervention-based studies are able to examine only a single dietary change (whether food, nutrient, or pattern) at a time, and are often limited to lower sample sizes [@Ordovas2018].
 
 To allow for more flexibility and greater sample sizes, gene-diet interactions (GDIs) are more commonly investigated in observational datasets. There is a rich literature of GDI discovery in the cardiometabolic realm. Typically, these focus on cardiometabolic risk factors in relation to biology-based candidate genes/variants [@Corella2009; @Cuda2011], but some have looked at clinical outcomes (e.g. MI [@Cornelis2006]). Other approaches use main-effect genetic risk scores, such as that for obesity interacting with sugar-sweetened beverage intake to influence anthropometric traits [@Qi2012; @Olsen2016].
 
-Characterization of individuals based on single or small groups of single nucleotide polymorphisms (SNPs) likely neglects important signal elsewhere in the genome, especially when dealing with highly polygenic cardiometabolic traits. Thus, for effective personalized nutrition approaches to be realized, it is necessary to integrate signals across the genome. A few investigations have explored GDIs genome-wide, such as for dairy and BMI [@Smith2018] and for various dietary components and colorectal cancer [@Figueiredo2014]. However, genome-wide interaction studies (GWIS) can be problematic due to the lower statistical power inherent in gene-environment interaction analyses [@Dempfle2008]. Furthermore, the potential for confounding and reverse causation (i.e. cardiometabolic risk impacting dietary behavior) in statistical interactions from observational data means that GDIs may not always predict modification of the risk factor in question after a dietary intervention.
+Characterization of individuals based on single or small groups of single nucleotide polymorphisms (SNPs) likely neglects important signal elsewhere in the genome, especially when dealing with highly polygenic cardiometabolic traits. Thus, for effective personalized nutrition approaches to be realized, it is necessary to integrate many signals across the genome. A few investigations have explored GDIs genome-wide, such as for dairy and BMI [@Smith2018] and for various dietary components and colorectal cancer [@Figueiredo2014]. However, genome-wide interaction studies (GWIS) can be problematic due to the lower statistical power inherent in gene-environment interaction analyses [@Dempfle2008]. Furthermore, there is potential for confounding and reverse causation (i.e. cardiometabolic risk impacting dietary behavior) in statistical interactions from observational data. Given these limitations, it is not yet known whether collections of GDIs, discovered in observational datasets, can predict the effect of a dietary intervention on cardiometabolic risk factors (CRFs).
 
-In order to provide proof-of-concept for the use of GDIs in developing comprehensive diet response genetic scores, we sought to develop a genome-wide, GDI-based dietary fat response score for each of a series of cardiometabolic risk factors (CRFs). We performed genome-wide interaction studies for six CRFs, prioritizing sites with documented nominal main effects in prior genome-wide association studies, and used these intermediate results to derive fat response scores (FRS) for each CRF. We tested the performance of these scores in the fat reduction-focused Women's Health Initiative Dietary Modification trial, finding that an FRS for LDL-cholesterol (LDL-C) predicts 1-year LDL-C changes selectively in the intervention arm. Furthermore, we found associations of the LDL-C FRS with incident coronary heart disease and stroke subtypes specifically in the fat-reduction arm of the trial over approximately 22 years of follow-up.
+In order to provide proof-of-concept for the use of observational gene-diet interactions in developing comprehensive diet response genetic scores, we sought to develop a genome-wide, GDI-based dietary fat response score for each of a series of CRFs. We performed genome-wide interaction studies for six CRFs, prioritizing sites with documented nominal main effects in prior genome-wide association studies, and used these intermediate results to derive fat response scores (FRS) for each CRF. We tested the performance of these scores in the fat reduction-focused Women's Health Initiative Dietary Modification trial, finding that an FRS for LDL-cholesterol (LDL-C) predicts 1-year LDL-C changes selectively in the intervention arm. Furthermore, we found associations of the LDL-C FRS with incident coronary heart disease and stroke subtypes specifically in the fat-reduction arm of the trial over approximately 22 years of follow-up.
 
 
 # Methods
 
 ## Women's Health Initiative Dataset
 
-The Women's Health Initiative study consists of a series of substudies: three clinical trials (related to cancer, cardiovascular disease, and osteoporosis) and an observational study [@Anderson1998]. Over 160,000 participants were enrolled between 1993-1998, with the ability to enroll in up to 3 of the clinical trials simultaneously. For the purposes of this analysis, participants were categorized based only on whether or not they were enrolled in the dietary modification (DM) trial, which randomized almost 50,000 women to a low-fat diet or a control diet with no recommended dietary changes, with primary outcomes being incidence of breast and colorectal cancers and heart disease [@Ritenbaugh2003. Study of these participants conformed to the ethical guidelines outlined in the Declaration of Helsinki, and this research was approved by the Tufts Health Sciences IRB (protocol 12592).
+The Women's Health Initiative study consists of a series of substudies: three clinical trials (related to cancer, cardiovascular disease, and osteoporosis) and an observational study [@Anderson1998]. Over 160,000 participants were enrolled between 1993-1998, with the ability to enroll in up to 3 of the clinical trials simultaneously. For the purposes of this analysis, participants were categorized based only on whether or not they were enrolled in the dietary modification (DM) trial, which randomized almost 50,000 women to a low-fat diet or a control diet with no recommended dietary changes, with primary outcomes being incidence of breast and colorectal cancers and heart disease [@Ritenbaugh2003]. Study of these participants conformed to the ethical guidelines outlined in the Declaration of Helsinki, and this research was approved by the Tufts Health Sciences IRB (protocol 12592).
 
 Participants were comprehensively screened at baseline, including physical measurements, blood sample collection, and questionnaire administration, while only a subset of participants provided blood samples or returned questionnaires during later visits. The food frequency questionnaire (FFQ) was designed specifically for the WHI study, emphasizing specific foods and preparation methods to maximize its sensitivity to changes in fat intake [@Patterson1999]. 
 
-Phenotype data were accessed from dbGaP (accession: phs000746.v2.p3). Values shown in Table 1 only pertain to women whose genotypes were measured in one of a series of follow-up studies. For gene-diet interaction analyses, SBP, LDL-C, and FG were adjusted for medication use: LDL-C and FG values were divided by 0.75 for those on lipid-lowering and anti-diabetic medication, respectively, and SBP values were increased by 15 mmHg for those on anti-hypertensive medication. This type of adjustment for medication use has precedent in gene-environment interaction analyses [@Rao2017]. Cardiovascular risk factors (CRFs) were winsorized at 5 standard deviations from the mean and those other than LDL-C (BMI, SBP, HDL-C, TG, and FG) were log-transformed prior to analysis. Longitudinal risk factor changes were calculated in DM trial participants as the difference between baseline and year 1. Adjudicated time-to-event data for chronic disease outcomes (coronary heart disease, myocardial infarction, ischemic stroke, hemorrhagic stroke, and non-CVD death) were collected, while diabetes incidence was defined as the self-report of any of: diabetes pills, insulin treatment, or general treatment for diabetes. Follow-up data was available for approximately 22 years following enrollment. Phenotype data processing was performed using R version 3.4.3 [@RCoreTeam2017] and Python version 3.6.0.
+Phenotype data were accessed from the database of Genotypes and Phenotypes (dbGaP; accession: phs000746.v2.p3). Values shown in Table 1 only pertain to women whose genotypes were measured in one of a series of follow-up studies. For gene-diet interaction analyses, SBP, LDL-C, and FG were adjusted for medication use: LDL-C and FG values were divided by 0.75 for those on lipid-lowering and anti-diabetic medication, respectively, and SBP values were increased by 15 mmHg for those on anti-hypertensive medication. This type of adjustment for medication use has precedent in gene-environment interaction analyses [@Rao2017]. Cardiovascular risk factors (CRFs) were winsorized at 5 standard deviations from the mean and those other than LDL-C (BMI, SBP, HDL-C, TG, and FG) were log-transformed prior to analysis. Longitudinal risk factor changes were calculated in DM trial participants as the difference between baseline and year 1. Adjudicated time-to-event data for chronic disease outcomes (coronary heart disease, myocardial infarction, ischemic stroke, hemorrhagic stroke, and non-CVD death) were collected, while diabetes incidence was defined as the self-report of any of: diabetes pills, insulin treatment, or general treatment for diabetes. Follow-up data was available for approximately 22 years following enrollment. Phenotype data processing was performed using R version 3.4.3 [@RCoreTeam2017] and Python version 3.6.0.
 
 ## Genotype data and preprocessing
 
-Imputed genotype data were retrieved from dbGaP (accession: phs000746.v2.p3) as a harmonized set of imputation outputs from a series of genotyping studies involving WHI participants. Prior to imputation, study-specific quality control steps had been undertaken on directly-genotyped SNPs, with filters based on sample and call rate, Hardy-Weinberg equilibrium, and minor allele frequency. Phasing had been performed for autosomes using BEAGLE, followed by imputation using minimac (MACH for the SHARe study subset). After download from dbGaP, variants were converted from dose format using dose2plink (http://genepi.qimr.edu.au/staff/sarahMe/dose2plink), filtered for imputation R-squared > 0.3 and minor allele frequency (MAF) >0.001, and annotated with rsIDs, loci, and allelic information using the 1000 Genomes Phase 3 download from dbSNP (download date: April 13, 2018). Only variants passing the imputation quality threshold in all genotyping sub-studies were included in the final dosage dataset. For score development and calculation, imputed variant dosages were converted to hard-calls and set to missing if the estimated dosage was not within 0.1 of an integer allele count. Post-imputation genotype data processing was performed using PLINK 2.0, while clumping and score calculation were performed using PLINK 1.9 [@Chang2015].
+Imputed genotype data were retrieved from dbGaP (accession: phs000746.v2.p3) as a harmonized set of imputation outputs from a series of genotyping studies involving WHI participants. Prior to imputation, study-specific quality control steps had been undertaken on directly-genotyped SNPs, with filters based on sample and call rate, Hardy-Weinberg equilibrium, and minor allele frequency. Phasing had been performed for autosomes using BEAGLE, followed by imputation using minimac (MACH for the SHARe study subset). After download from dbGaP, variants were converted from dose format using dose2plink (http://genepi.qimr.edu.au/staff/sarahMe/dose2plink.html), filtered for imputation R-squared > 0.3 and minor allele frequency (MAF) >0.001, and annotated with rsIDs, loci, and allelic information using the 1000 Genomes Phase 3 download from dbSNP (download date: April 13, 2018). Only variants passing the imputation quality threshold in all genotyping sub-studies were included in the final dosage dataset. For score development and calculation, imputed variant dosages were converted to hard-calls and set to missing if the estimated dosage was not within 0.1 of an integer allele count. Post-imputation genotype data processing was performed using PLINK 2.0, while clumping and score calculation were performed using PLINK 1.9 [@Chang2015].
 
 ## Genome-wide interaction studies
 
-A genome-wide interaction study was performed for each of the six cardiometabolic risk factors. The genome-wide scan used an additive genotype model, adjusted for fixed effects including dietary fat (binary: % of kcals above or below the median), total kcals per day, age, five ancestry principal components, and genotyping sub-study. Genotyping was performed in a series of ancillary studies in WHI including Hip Fracture, GARNET, WHIMS+, GECCO (initial or CytoSNP), and AS264/MOPMAP. (Many participants were also genotyped as a part of the SHARe effort, but those women were of African American and Hispanic ancestry and thus were not included in the GWIS portion of this study.) Five of six sub-studies were adjusted for as binary variables to avoid collinearity. <!--Robust standard errors were used to provide tolerance to model mis-specification as can arise in studies of gene-environment interaction [@Voorman2011].--> The primary estimand of interest was the interaction term between dietary fat and minor allele count at the SNP of interest. Interaction analyses were carried out using PLINK 2.0 [@Chang2015]. Variants of interest were annotated to genes using Annovar [@Wang2010].
+A genome-wide interaction study was performed for each of the six cardiometabolic risk factors. The genome-wide scan used an additive genotype model, adjusted for fixed effects including dietary fat (binary: % of kcals above or below the median), total kcals per day, age, five ancestry principal components, and genotyping sub-study. Genotyping was performed in a series of ancillary studies in WHI including Hip Fracture, GARNET, WHIMS+, GECCO (initial or CytoSNP), and AS264/MOPMAP. (Many participants were also genotyped as a part of the SHARe effort, but those women were of African American and Hispanic ancestry and thus were not included in the GWIS portion of this study.) The primary estimand of interest was the interaction term between dietary fat and minor allele count at the SNP of interest. Interaction analyses were carried out using PLINK 2.0 [@Chang2015]. Variants of interest were annotated to genes using Annovar [@Wang2010].
 
 Gene-environment interaction power calculations for single SNPs were performed using the Quanto tool [@Gauderman2002]. The following assumptions were made: additive model; variance explained by genotype alone = 0.5%; and binary environment with 50% prevalence and explaining 10% of variance. (Note: there is no effect of minor allele frequency in this case given that variances explained are directly specified.)
 
 ## Genetic responder score construction and evaluation
 
-To prioritize variants for inclusion in genetic responder scores, nominal (p < 0.05) variants for main-effect on each risk factor were retrieved from large-scale meta-analyses: GIANT for BMI [@Yengo2018]; International Consortium for Blood Pressure for SBP [@Ehret2011]; Global Lipid Genetics Consortium (GLGC) for LDL-C, HDL-C, and TG [@Willer2013]; and MAGIC for fasting glucose [@Dupuis2010]. Each FRS was constructed using summary statistics for the diet-SNP interaction terms from the associated GWIS. SNPs were filtered for nominal main-effect relationships using the above meta-analyses, and interaction summary statistics were used as input to a pruning-and-thresholding (P&T) procedure (using the "--clump" function in PLINK 1.9), with a seed threshold of p=0.05 and an LD threshold of r^2^=0.5. The linkage disequilibrium references for the procedure was calculated from genotypes of the white DM trial participants. Genetic fat response scores (FRS) for each individual were then calculated as the weighted sum of allelic dosages for variants selected by the P&T procedure, with weights corresponding to the GWIS interaction term estimates. This type of diet interaction-based genetic score development has been described previously, for example in a Korean cohort with respect to body fat changes [@Cha2018]. A genetic risk score for LDL-C was created using the GLGC LDL-C meta-analysis summary statistics and the same P&T method and parameters as was used for the interaction analyses, resulting in a 26467-SNP score.
+Given the lower power of gene-environment interaction detection, a subset of variants were prioritized for score derivation having nominal (p < 0.05) marginal effects in large-scale meta-analyses. Summary statistics were retrieved from: GIANT for BMI [@Yengo2018]; International Consortium for Blood Pressure for SBP [@Ehret2011]; Global Lipid Genetics Consortium (GLGC) for LDL-C, HDL-C, and TG [@Willer2013]; and MAGIC for fasting glucose [@Dupuis2010]. After this main-effect filter, each FRS was constructed using summary statistics for the diet-SNP interaction terms from the associated GWIS. Interaction summary statistics were used as input to a pruning-and-thresholding (P&T) procedure (using the "--clump" function in PLINK 1.9), with a seed threshold of p=0.05 and an LD threshold of r^2^=0.5. The linkage disequilibrium references for the procedure was calculated from genotypes of the white DM trial participants. Genetic fat response scores (FRS) for each individual were then calculated as the weighted sum of allelic dosages for variants selected by the P&T procedure, with weights corresponding to the GWIS interaction term estimates. This type of diet interaction-based genetic score development has been described previously, for example in a Korean cohort with respect to body fat changes [@Cha2018]. A genetic risk score for LDL-C (main-effect) was created using the GLGC LDL-C meta-analysis summary statistics and the same P&T method and parameters as was used for the interaction analyses, resulting in a 26467-SNP score. As an alternative to the P&T procedure, the LDpred method (which uses all variants without any main-effect filter) was used to calculate FRS weights for each CRF, incorporating a minor change to the code to allow for the slight genomic deflation observed for triglycerides and fasting glucose [@Vilhjalmsson2015]. LDpred was run using an LD radius of 500 variants, HapMap 3 variants only (962057 variants in total), and causal variant fractions of 0.001, 0.01, and 0.1, and the resulting weights were then used to calculate dosage-based scores as done with the P&T method.
 
-FRS were used to test for discrimination of changes in CRFs over the first year of the DM trial. Risk factor changes were assessed using linear models in participants in the intervention arm, with and without adjustment for baseline CRF levels. As a sensitivity analysis, p-values were calculated in separate models for interaction of the genetic score with 1) trial arm (control vs. dietary modification), and 2) observed fat reduction (negative vs. positive 3-year change in FFQ-estimated dietary fat). GRS were further tested for prediction of chronic disease development during follow-up across DM trial strata. Time-to-event for each of coronary heart disease, myocardial infarction, ischemic stroke, hemorrhagic stroke, and non-CVD death were used to fit age-adjusted Cox proportional hazards models, including a random effect term for genotyping sub-study (*cluster()* term in the *coxph* function call). Estimated log-hazard ratios were extracted from regressions conducted in the following strata: 1) DM trial intervention arm, 2) DM trial control arm, 3) DM trial intervention arm filtered for participants with 1-year fat reduction based on FFQ, and 4) DM trial control arm filtered for participants with 1-year fat increase based on FFQ.
+FRS were used to test for discrimination of changes in CRFs over the first year of the DM trial. Risk factor changes were assessed using linear models in participants in the intervention arm, with and without adjustment for baseline CRF levels. The LDL-C-specific FRS was then investigated further in a series of sensitivity analyses. First, p-values were calculated for interaction of the genetic score with trial arm (control vs. dietary modification). Second, principal components analysis was performed in DM intervention participants using four baseline metabolic biomarkers (total cholesterol, HDL-C, TG, and FG) included in a prior clustering analysis for use in personalized nutrition stratification [@ODonovan2015]. Equivalent linear models to the original FRS assessment models were fit, with additional adjustment for the four resulting principal components.
+
+The LDL-FRS was further tested for prediction of chronic disease development during follow-up across DM trial strata. Time-to-event for each of coronary heart disease, myocardial infarction, ischemic stroke, hemorrhagic stroke, diabetes, and non-CVD death were used to fit age-adjusted Cox proportional hazards models, including a random effect term for genotyping sub-study (*cluster()* term in the *coxph* function call). This frailty/random effects model has been recommended for optimizing power in multi-center time-to-event models [@Munda2014]. Estimated log-hazard ratios were extracted from regressions conducted in the following strata: 1) DM trial intervention arm, 2) DM trial control arm, 3) DM trial intervention arm filtered for participants with 1-year fat reduction based on FFQ, and 4) DM trial control arm filtered for participants with 1-year fat increase based on FFQ.
 
 # Results
 ## Dietary fat responder score development
 
-The study workflow is outlined in Supp. Figure S1. A series of genome-wide interaction studies (GWIS) were undertaken in cross-sectional data from the Women's Health Initiative. These GWIS incorporated only women who did not participate in the dietary modification (DM) trial, using imputed genotypes along with baseline self-reported dietary intakes (from food frequency questionnaires) and fasting blood biomarkers. Baseline characteristics of these women, along with those participating in the DM trial, are shown in Table 1.
+```{r show-workflow, fig.cap="Study workflow. First, a series of genome-wide interaction studies (GWIS) were conducted with dietary fat as the exposure for each of six cardiovascular risk factors (CRFs). Next, dietary fat response scores were developed using GWIS summary statistics and tested for the prediction of one-year CRF changes in the Dietary Modification trial intervention (with sensitivity models using the control group). Finally, the LDL-C score was tested for the prediction of differential effects on chronic disease development in the intervention and control groups over approximately 22 years of follow-up. CRF: cardiometabolic risk factor, FFQ: food frequency questionnaire, GWIS: genome-wide interaction study."}
+include_graphics("workflow.pdf")
+```
+
+The study workflow is outlined in Figure 1. A series of genome-wide interaction studies (GWIS) were undertaken in cross-sectional data from the Women's Health Initiative. These GWIS incorporated only women who did not participate in the dietary modification (DM) trial, using imputed genotypes along with baseline self-reported dietary intakes (from food frequency questionnaires) and fasting blood biomarkers. Baseline characteristics of these women, along with those participating in the DM trial, are shown in Table 1. While there were differences across groups in almost all characteristics, they were modest in size.
 
 ```{r pop-description, message=F, warning=F}
 get_median_iqr <- function(x) {
@@ -176,49 +171,75 @@ get_median_iqr <- function(x) {
 # all_whi_phenos <- read_csv("../data/processed/metadata_whi.csv", 
 #                            col_types=cols_only(subjID="c", smk_now="d", visit_year="d")) %>%
 #   filter(visit_year == 0)
+whi_psam <- read_tsv("../data/processed/whi_prediction/whi.psam")
 white_nondm_phenos <- read_delim(
   "../data/processed/whi_prediction/whi_white_gwas_phenos.txt", delim=" ") %>%
-  # left_join(all_whi_phenos, by="subjID")
+  filter(IID %in% whi_psam$IID) %>%
   select(age, smk_now, lipid_med, ht_med, dm_med, 
          bmi, sbp, ldl, hdl, tg, glu) %>%
   replace_na(list(smk_now=F, lipid_med=F, ht_med=F, dm_med=F))
 
-white_dm_phenos <- read_delim("../data/processed/whi_prediction/whi_white_DM_phenos_1.txt", 
+
+white_dm_phenos <- read_delim("../data/processed/whi_prediction/whi_white_DM_phenos_1.txt",
                         delim=" ") %>%
   filter(dm_trial == T) %>%
-  select(age, smk_now, lipid_med, ht_med, dm_med, 
+  select(SampleID, dm_intervention,
+         age, smk_now, lipid_med, ht_med, dm_med, 
          bmi=baseline_bmi, sbp=baseline_sbp,
          ldl=baseline_ldl, hdl=baseline_hdl, tg=baseline_tg, glu=baseline_glu) %>%
   replace_na(list(smk_now=F, lipid_med=F, ht_med=F, dm_med=F))
 
-pop_tbl <- bind_rows(list(white_dm_phenos, nondm=white_nondm_phenos), 
-                     .id="group") %>%
+pop_tbl <- bind_rows(list(filter(white_dm_phenos, SampleID %in% whi_psam$IID), 
+                          nondm=white_nondm_phenos),
+                     .id="group")
+pop_tbl_summaries <- pop_tbl %>%
   group_by(group) %>%
-  summarise(`Sample size`=n(),
-            Age=get_median_iqr(age),
-            `Current smoking`=paste0(sum(smk_now), " (",
-                                     round(sum(smk_now) / n() * 100), "%)"),
-            `Lipid-lowering medication`=paste0(sum(lipid_med), " (",
-                                             round(sum(lipid_med) / n() * 100), "%)"),
-            `Hypertension medication`=paste0(sum(ht_med), " (",
-                                             round(sum(ht_med) / n() * 100), "%)"),
-            `Diabetes medication`=paste0(sum(dm_med), " (",
-                                             round(sum(dm_med) / n() * 100), "%)"),
-            `Body mass index (BMI; kg/m^2)`=get_median_iqr(bmi),
-            `Systolic blood pressure (SBP; mm Hg)`=get_median_iqr(sbp),
-            `LDL cholesterol (LDL-C; mg/dL)`=get_median_iqr(ldl),
-            `HDL cholesterol (HDL-C; mg/dL)`=get_median_iqr(hdl),
-            `Triglycerides (TG; mg/dL)`=get_median_iqr(tg),
-            `Fasting glucose (FG; mg/dL)`=get_median_iqr(glu)) %>%
+  summarise(
+    # `Sample size`=n(),
+    Age=get_median_iqr(age),
+    `Current smoking`=paste0(sum(smk_now), " (",
+                             round(sum(smk_now) / n() * 100), "%)"),
+    `Lipid-lowering medication`=paste0(sum(lipid_med), " (",
+                                       round(sum(lipid_med) / n() * 100), "%)"),
+    `Hypertension medication`=paste0(sum(ht_med), " (",
+                                     round(sum(ht_med) / n() * 100), "%)"),
+    `Diabetes medication`=paste0(sum(dm_med), " (",
+                                 round(sum(dm_med) / n() * 100), "%)"),
+    `Body mass index (BMI; kg/m^2)`=get_median_iqr(bmi),
+    `Systolic blood pressure (SBP; mm Hg)`=get_median_iqr(sbp),
+    `LDL cholesterol (LDL-C; mg/dL)`=get_median_iqr(ldl),
+    `HDL cholesterol (HDL-C; mg/dL)`=get_median_iqr(hdl),
+    `Triglycerides (TG; mg/dL)`=get_median_iqr(tg),
+    `Fasting glucose (FG; mg/dL)`=get_median_iqr(glu)
+  ) %>%
   select(-group) %>%
   t()
-colnames(pop_tbl) <- c("DM trial", "Non-DM trial")
-kable(pop_tbl, booktabs=T, linesep="", longtable=T, 
+
+get_pop_comparison_pval <- function(x, df) {
+  if (class(df[[x]]) != "numeric" | x == "smk_now") chisq.test(df[[x]], df$group)$p.value
+  else wilcox.test(df[[x]] ~ group, data=df)$p.value
+}
+
+comparison_fields <- c("age", "smk_now",  "lipid_med", "ht_med", "dm_med",
+                       "bmi", "sbp", "ldl", "hdl", "tg", "glu")
+pop_pvals <- sapply(comparison_fields, get_pop_comparison_pval, pop_tbl)
+
+format_pvalues_epi <- function(p) {
+  ifelse(p < 0.001, "<0.001", 
+         ifelse(p < 0.1, round(p, 3), round(p, 2)))
+}
+
+pop_tbl_summaries <- cbind(pop_tbl_summaries, 
+                           c("", format_pvalues_epi(pop_pvals)))
+
+colnames(pop_tbl_summaries) <- c("DM trial\\n(N = 2165 (Intervention), 3281 (Control))", "Non-DM trial\\n(N = 9414)", "P-value")
+kable(pop_tbl_summaries, booktabs=T, linesep="", longtable=T, 
       caption="Baseline characteristics of European-ancestry participants in the Women's Health Initiative Study (n = 17304 in total)") %>%
   footnote(general=c("* Continuous values shown as: median (interquartile range)",
                      "DM: dietary modification trial; Non-DM: all women not participating in the DM trial (enrolled in at least one of: hormone therapy trial, calcium and vitamin D trial, or observational study)"),
            general_title="",
-           threeparttable=T)
+           threeparttable=T) %>%
+  kable_styling(latex_options="scale_down")
 ```
 
 ```{r power-calcs}
@@ -228,9 +249,9 @@ quanto_res <- data.frame(var_expl_GE=c(0.05, 0.1, 0.5, 1),
                          genome_wide=c(70866, 35423, 7069, 3524))
 ```
 
-Preliminary power calculations were undertaken, based on parameter assumptions including a modest SNP main effect (0.5%) under an additive model and a binary environment with 50% prevalence explaining 10% of the outcome phenotypic variance. The results showed that, at the sample sizes available for European ancestry non-DM participants (7000-10000 individuals for each cardiometabolic risk factor (CRF)), this analysis was powered to detect only moderately large interaction effects (GxE variance explained greater than approximately 0.5%) at genome-wide significance (Supp. Table S1). <!--Based on these results, a filter for nominal main-effect SNPs (p < 0.05 in existing large-scale GWAS for each CRF) was applied before score development in order to balance the contribution of variants with smaller interaction effect sizes and the inclusion of spurious genetic relationships.-->
+Preliminary power calculations were undertaken, based on parameter assumptions including a modest SNP main effect (0.5%) under an additive model and a binary environment with 50% prevalence explaining 10% of the outcome phenotypic variance. The results showed that, at the sample sizes available for European ancestry non-DM participants (7050-9412 individuals for each cardiometabolic risk factor (CRF)), this analysis was powered to detect only moderately large interaction effects (GxE variance explained greater than approximately 0.5%) at genome-wide significance (Supplementary Table 1).
 
-Dietary fat response scores were generated for each CRF using results from the corresponding GWIS analysis. Linear regression models were fit for log-transformed baseline CRF values (other than LDL-C), incorporating gene-dietary fat interactions (dietary fat represented as a binary % of total calories above or below the median) while adjusting for age, total calories, five genetic principal components, and genotyping sub-study. Q-Q plots of the GWIS results showed that genomic inflation was fairly well-controlled (Supp. Figure S2). For each CRF, the associated summary statistics (corresponding to the fat-genotype interaction term estimates) were filtered to include only those with nominal main-effect associations in large-scale published GWAS. This filter was informed by the power analysis above and chosen as a compromise between discovery and statistical power (alternative results using either a more stringent threshold or no filtering are shown in Supp. Table S2). A pruning-and-thresholding method was used to generate six FRS from these individual sets of summary statistics along with genotypes from the WHI DM participants as a linkage disequilibrium (LD) reference. Using parameters of seed p-value=0.05 and LD r^2^<0.5, six sets of score weights were generated, with relevant SNP set sizes ranging from 1536 (SBP) to 6042 (BMI). Scores were then calculated as the weighted sum of allele counts across SNPs, normalized by the number of non-missing SNPs per individual.
+Dietary fat response scores were generated for each CRF using results from the corresponding GWIS analysis (see Methods). Q-Q plots of the GWIS results showed that genomic inflation was fairly well-controlled (Supplementary Figure 1). For each CRF, the associated summary statistics (corresponding to the fat-genotype interaction term estimates) were filtered to include only those with nominal main-effect associations in large-scale published GWAS. This filter was informed by the power analysis above and chosen as a compromise between discovery and statistical power (alternative results using either a more stringent threshold or no filtering are shown in Supplementary Table 2). A pruning-and-thresholding method was used to generate six FRS from these individual sets of summary statistics along with genotypes from the WHI DM participants as a linkage disequilibrium (LD) reference. Using parameters of seed p-value=0.05 and LD r^2^<0.5, six sets of score weights were generated, with relevant SNP set sizes ranging from 1536 (SBP) to 6042 (BMI). Scores were then calculated as the weighted sum of allele dosages across SNPs, normalized by the number of non-missing SNPs per individual.
 
 ## Dietary fat responder score assessment
 
@@ -251,6 +272,12 @@ read_profile <- function(filename, df) {
     inner_join(dm_phenos, by=c("IID"="SampleID"))
 }
 
+read_sscore <- function(filename, df) {
+  read_table2(filename) %>%
+    select(IID, SCORE=SCORE1_AVG, CNT=NMISS_ALLELE_CT) %>%
+    inner_join(dm_phenos, by=c("IID"="SampleID"))
+}
+
 get_model_results <- function(form, df, score_term, res_type="statistic") {
   lm_fit <- lm(as.formula(form), data=df) %>%
     tidy() %>%
@@ -260,13 +287,33 @@ get_model_results <- function(form, df, score_term, res_type="statistic") {
 
 pheno_transforms <- c(bmi="logBMI", sbp="logSBP", ldl="ldl", 
                       hdl="logHDL", tg="logTG", glu="logGLU")
+gwis_sample_sizes <- c(bmi=9358, sbp=9412, ldl=7050, hdl=7157, tg=7158, glu=7200)
 score_snp_sizes <- c(bmi=6042, sbp=1536, ldl=1760, hdl=1731, tg=1774, glu=1924)
 
+# test_score_hardcalls <- function(score_rf, test_rf=score_rf, res_type="statistic") {
+#   scorefile <- paste0(res_dir, "fat_pct_binary_",
+#                       pheno_transforms[score_rf], "_whi_white_nominalME.profile")
+#   if(!file.exists(scorefile)) return (NA)
+#   score_df <- read_profile(scorefile)
+#   delta_var <- paste0("delta_", test_rf)
+#   direct_formula <- paste0(delta_var, " ~ SCORE")
+#   bladj_formula <- paste0(delta_var, " ~ SCORE + baseline_", test_rf)
+#   interaction_formula <- paste0(delta_var, " ~ SCORE * dm_intervention")
+#   intervention_df <- filter(score_df, dm_intervention == T)
+#   get_model_results(direct_formula, intervention_df, "SCORE") %>%
+#     mutate(n=sum(!is.na(intervention_df[[delta_var]])),
+#            score_sd=sd(intervention_df$SCORE, na.rm=T),
+#            rf_sd=sd(intervention_df[[delta_var]], na.rm=T),
+#            effect_per_sd=estimate * score_sd,
+#            effect_std=estimate / rf_sd * score_sd,
+#            n_snps=max(intervention_df$CNT, na.rm=T) / 2)
+# }
+
 test_score <- function(score_rf, test_rf=score_rf, res_type="statistic") {
-  scorefile <- paste0(res_dir, "fat_pct_binary_",
-                      pheno_transforms[score_rf], "_whi_white_nominalME.profile")
+  scorefile <- paste0(res_dir, "dosage_scores/fat_pct_binary_",
+                      pheno_transforms[score_rf], "_whi_white_nominalME.sscore")
   if(!file.exists(scorefile)) return (NA)
-  score_df <- read_profile(scorefile)
+  score_df <- read_sscore(scorefile)
   delta_var <- paste0("delta_", test_rf)
   direct_formula <- paste0(delta_var, " ~ SCORE")
   bladj_formula <- paste0(delta_var, " ~ SCORE + baseline_", test_rf)
@@ -285,24 +332,11 @@ fat_score_res <- tibble(rf=rfs) %>%
   mutate(res=map(rf, test_score)) %>%
   unnest(res)
 
-# fat_score_res %>%
-#   ggplot(aes(x=rf, y=effect_std)) +
-#   geom_bar(stat="identity")
-# 
-# fat_score_res %>%
-#   ggplot(aes(x=1, y=rf, fill=n)) +
-#   geom_tile() +
-#   scale_fill_gradient2(name="Sample size with follow-up CRF values (DM trial)", high=scales::muted("red")) +
-#   labs(subtitle="Estimated responder score effect (SD CRF change / SD score)") +
-#   theme(axis.title=element_blank(), axis.line=element_blank(),
-#         axis.ticks=element_blank(), axis.text.x=element_blank(),
-#         panel.background=element_blank())
-
 test_score_bladj <- function(score_rf, test_rf=score_rf, res_type="statistic") {
-  scorefile <- paste0(res_dir, "fat_pct_binary_",
-                      pheno_transforms[score_rf], "_whi_white_nominalME.profile")
+  scorefile <- paste0(res_dir, "dosage_scores/fat_pct_binary_",
+                      pheno_transforms[score_rf], "_whi_white_nominalME.sscore")
   if(!file.exists(scorefile)) return (NA)
-  score_df <- read_profile(scorefile)
+  score_df <- read_sscore(scorefile)
   delta_var <- paste0("delta_", test_rf)
   bladj_formula <- paste0(delta_var, " ~ SCORE + baseline_", test_rf)
   intervention_df <- filter(score_df, dm_intervention == T)
@@ -320,6 +354,7 @@ fat_score_res_bladj <- tibble(rf=rfs) %>%
   unnest(res) %>%
   mutate(effect_std=round(effect_std, 2),
          p.value=round(p.value, 3),
+         n_gwis=gwis_sample_sizes,
          n_snps=score_snp_sizes[rf],
          rf=pretty_rfs[rf])
 
@@ -327,28 +362,32 @@ fat_score_res %>%
   select(rf, n_snps, n, effect_std, p.value) %>%
   mutate(effect_std=round(effect_std, 2),
          p.value=round(p.value, 3),
+         n_gwis=gwis_sample_sizes,
          n_snps=score_snp_sizes[rf],
          rf=pretty_rfs[rf]) %>%
   inner_join(select(fat_score_res_bladj, rf, effect_std, p.value), 
              by="rf", suffix=c(".basic", ".bladj")) %>%
-  setNames(c("Risk factor", "\\# SNPs in risk score", "N\\textsuperscript{1}", 
-             rep(c("Std. effect size\\textsuperscript{2}", "P-value"), 2))) %>%
+  select(rf, n_gwis, n_snps, n, effect_std.basic, p.value.basic,
+         effect_std.bladj, p.value.bladj) %>%
+  setNames(c("Risk factor", "N_GWIS\\textsuperscript{2}", "\\# SNPs in risk score", "N\\textsuperscript{3}", 
+             rep(c("Std. effect size\\textsuperscript{4}", "P-value"), 2))) %>%
   kable(booktabs=T, linesep="", longtable=T, escape=F,
         caption="Responder score effects on 1-year CRF changes in DM trial participants") %>%
-  add_header_above(c(" "=3, "Univariate"=2, "Baseline-adjusted\\\\textsuperscript{3}"=2), escape=F) %>%
-  footnote(number=c("N = sample size available with 1-year follow-up measurements for the CRF in question",
-                      "Std. effect size represents the regression coefficient estimate in terms of CRF standard deviation per responder score standard deviation",
-                    "Baseline-adjusted models are adjusted for the baseline value of the CRF being tested"),
+  add_header_above(c(" "=4, "Univariate"=2, "Baseline-adjusted\\\\textsuperscript{1}"=2), escape=F) %>%
+  footnote(number=c("Baseline-adjusted models are adjusted for the baseline value of the CRF being tested",
+                    "N_GWIS = sample size available for the associated GWIS (non-DM participants).",
+                    "N = sample size available for DM participants with 1-year follow-up measurements for the CRF in question",
+                    "Std. effect size represents the regression coefficient estimate in terms of CRF standard deviation per responder score standard deviation"),
            # general_title="",
            threeparttable=T)
 ```
 
 ```{r test-scores-alternate-filters, message=F}
 test_score_otherfilter <- function(score_rf, filt, test_rf=score_rf) {
-  scorefile <- paste0(res_dir, "fat_pct_binary_",
-                      pheno_transforms[score_rf], "_whi_white_", filt, ".profile")
+  scorefile <- paste0(res_dir, "dosage_scores/fat_pct_binary_",
+                      pheno_transforms[score_rf], "_whi_white_", filt, ".sscore")
   if(!file.exists(scorefile)) return (NA)
-  score_df <- read_profile(scorefile)
+  score_df <- read_sscore(scorefile)
   delta_var <- paste0("delta_", test_rf)
   direct_formula <- paste0(delta_var, " ~ SCORE")
   bladj_formula <- paste0(delta_var, " ~ SCORE + baseline_", test_rf)
@@ -370,6 +409,39 @@ fat_score_res_nofilter <- tibble(rf=rfs) %>%
 fat_score_res_suggfilter <- tibble(rf=rfs) %>%
   mutate(res=map(rf, test_score_otherfilter, "suggestiveME")) %>%
   unnest(res)
+```
+
+```{r test-scores-ldpred, message=F}
+test_score_ldpred <- function(score_rf, f, test_rf=score_rf) {
+  scorefile <- paste0(res_dir, "dosage_scores/ldpred", f, "_",
+                      pheno_transforms[score_rf], ".sscore")
+  if(!file.exists(scorefile)) return (NA)
+  score_df <- read_sscore(scorefile)
+  delta_var <- paste0("delta_", test_rf)
+  direct_formula <- paste0(delta_var, " ~ SCORE")
+  bladj_formula <- paste0(delta_var, " ~ SCORE + baseline_", test_rf)
+  interaction_formula <- paste0(delta_var, " ~ SCORE * dm_intervention")
+  intervention_df <- filter(score_df, dm_intervention == T)
+  get_model_results(direct_formula, intervention_df, "SCORE") %>%
+    mutate(n=sum(!is.na(intervention_df[[delta_var]])),
+           score_sd=sd(intervention_df$SCORE, na.rm=T),
+           rf_sd=sd(intervention_df[[delta_var]], na.rm=T),
+           effect_per_sd=estimate * score_sd,
+           effect_std=estimate / rf_sd * score_sd,
+           n_snps=max(intervention_df$CNT, na.rm=T) / 2)
+}
+
+test_scores_ldpred <- function(f) {
+  tibble(rf=rfs) %>%
+    mutate(res=map(rf, test_score_ldpred, f)) %>%
+    unnest(res)
+}
+
+ldpred_f_values <- c("_p1.0000e-03", "_p3.0000e-03", "_p1.0000e-02", 
+                     "_p3.0000e-02", "_p1.0000e-01", "_p3.0000e-02", "-inf")
+fat_score_res_ldpred <- lapply(setNames(ldpred_f_values, ldpred_f_values), 
+                               test_scores_ldpred) %>%
+  bind_rows(.id="f")
 ```
 
 ```{r test-scores-cross-ancestry, message=F}
@@ -394,7 +466,7 @@ fat_score_res_his <- tibble(rf=rfs) %>%
 dm_phenos <- white_dm_phenos
 ```
 
-As the scores were developed to predict a positive interaction with dietary fat intake, the expected direction of the FRS effect on risk factors in the present fat-reduction trial would be negative. Of the fat response scores examined, only the LDL-C fat response score (LDL-FRS) was predictive at p < 0.05 of the associated CRF change in DM trial participants in the fat-reduction arm (passing a Bonferroni correction for the 6 CRFs tested in baseline-adjusted sensitivity models). For this score, the standardized effect size was `r round(fat_score_res$effect_std[fat_score_res$rf == "ldl"], 2)` (corresponding to a `r round(-fat_score_res$effect_per_sd[fat_score_res$rf == "ldl"], 2)` mg/dL greater decrease in LDL-C per score standard deviation; p=`r round(fat_score_res$p.value[fat_score_res$rf == "ldl"], 3)`). We note that the sample size of European-ancestry DM trial participants with follow-up measurements was much smaller for biochemical variables (n~150) compared to BMI and SBP (n~2000). Using the score developed in European-ancestry individuals, score performance was then tested in a combined-ancestry group including Black and Hispanic individuals, which almost doubled the sample size (Supp. Table S3). While some traits showed strong relationships (e.g. SBP), the signs of many were in a counter-intuitive direction, including a flip in sign for the previously-strong LDL-C relationship, suggesting that these results reflect primarily differences in ancestry rather than the intended biological differences. This observation was reinforced by the lack of association of the score with CRF changes in either Blacks or Hispanics alone.
+As the scores were developed to predict a positive interaction with dietary fat intake, the expected direction of the FRS effect on risk factors in the present fat-reduction trial would be negative. Of the fat response scores examined, only the LDL-C fat response score (LDL-FRS) was predictive at p < 0.05 of the associated CRF change in DM trial participants in the fat-reduction arm (passing a Bonferroni correction for the 6 CRFs tested in baseline-adjusted sensitivity models). For this score, the standardized effect size was `r round(fat_score_res$effect_std[fat_score_res$rf == "ldl"], 2)` (corresponding to a `r round(-fat_score_res$effect_per_sd[fat_score_res$rf == "ldl"], 2)` mg/dL greater decrease in LDL-C per score standard deviation; p=`r round(fat_score_res$p.value[fat_score_res$rf == "ldl"], 3)`). We note that the sample size of European-ancestry DM trial participants with follow-up measurements was much smaller for biochemical variables (n~150) compared to BMI and SBP (n~2000). Using the score developed in European-ancestry individuals, score performance was then tested in a combined-ancestry group including Black and Hispanic individuals, which almost doubled the sample size (Supplementary Table 3). While some traits showed strong relationships (e.g. SBP), the signs of many were in a counter-intuitive direction, including a flip in sign for the previously-strong LDL-C relationship, suggesting that these results may reflect the known difficulties in conducting trans-ancestry polygenic prediction (due to differences in linkage disequilibrium among other factors) rather than the intended biological differences. This observation was reinforced by the lack of association of the score with CRF changes in either Blacks or Hispanics alone. Using the LDpred algorithm, which considers the full genome-wide set of SNPs, no predictive FRS effects were detected (Supplementary Table 4), possibly reflecting a lack of power to overcome the multiple testing burden without a nominal main-effect filter.
 
 ```{r test-ldl-scores-other-rfs, message=F}
 ldl_score_res <- tibble(test_rf=rfs) %>%
@@ -403,17 +475,22 @@ ldl_score_res <- tibble(test_rf=rfs) %>%
 ```
 
 ```{r ldl-score-investigation, message=F}
-ldl_score_df <- read_profile(paste0(res_dir, "fat_pct_binary_ldl_whi_white_nominalME.profile")) %>%
+ldl_score_df <- read_sscore(paste0(res_dir, "dosage_scores/fat_pct_binary_ldl_whi_white_nominalME.sscore")) %>%
   mutate(fat_down=delta_fat < 0)
 
 ldl_basic_lm_fit <- lm(delta_ldl ~ SCORE, data=ldl_score_df, 
                        subset=ldl_score_df$dm_intervention == T)
+ldl_basic_r_CI <- cor.test(~delta_ldl+SCORE, data=ldl_score_df, 
+                           subset=ldl_score_df$dm_intervention == T)$conf.int
+ldl_basic_r2_CI <- as.vector(ldl_basic_r_CI) ** 2
 ldl_blonly_lm_fit <- lm(delta_ldl ~ baseline_ldl, data=ldl_score_df, 
                        subset=ldl_score_df$dm_intervention == T)
 ldl_bladj_lm_fit <- lm(delta_ldl ~ SCORE + baseline_ldl, data=ldl_score_df, 
                        subset=ldl_score_df$dm_intervention == T)
-ldl_interaction_lm_fit <- lm(delta_ldl ~ SCORE * dm_intervention, 
+ldl_interaction_lm_fit <- lm(delta_ldl ~ SCORE * dm_intervention + baseline_ldl, 
                              data=ldl_score_df)
+ldl_delta_fat_interaction_lm_fit <- lm(delta_ldl ~ SCORE * delta_fat + baseline_ldl, 
+                                       data=ldl_score_df)
 
 ldl_score_hist <- ggplot(ldl_score_df, aes(x=SCORE)) +
   geom_histogram() +
@@ -426,6 +503,7 @@ annovar_output <- read_tsv(paste0(res_dir, "fat_pct_binary_ldl_whi_white_nominal
                            col_names=c("Type", "Gene", "CHR", "POS", "POS2", "REF", "ALT", "SNP", "BETA")) %>%
   arrange(desc(abs(BETA))) %>%
   mutate(Gene=gsub("\\(dist=[0-9]*\\)|\\(dist=NONE\\)", "", Gene),
+         Gene=gsub("\\(NM.*\\)", "", Gene),
          Gene=gsub(",", "/", Gene))
 
 ldl_score_weights_hist <- annovar_output %>%
@@ -476,10 +554,25 @@ annovar_gene_plt <- annovar_gene_summary %>%
   coord_flip()
 ```
 
-Based on its observed association in European-ancestry participants, the LDL-FRS was investigated further. Linear models showed that the LDL-FRS accounted for `r round(summary(ldl_basic_lm_fit)$r.squared * 100, 1)`% of the variance in 1-year LDL-C changes in the DM intervention arm. In baseline-adjusted models, this figure rose slightly to `r round((summary(ldl_bladj_lm_fit)$r.squared - summary(ldl_blonly_lm_fit)$r.squared) * 100, 1)`, based on the R^2^ change from a baseline-only model. Additional models confirmed an interaction between DM trial arm and the LDL-FRS (p=0.011), supporting the specificity of this score for the fat-reduction arm. The LDL-FRS also showed specificity for LDL-C in that it did not predict changes in any other CRF (Supp. Table S4). The 1760 component SNPs were annotated using Annovar [@Wang2010], revealing a predominance of intergenic and intronic variants and a set of genes with high numbers of independent SNPs contributing to the score (Figure 1a-d). Top genes by number of contributing SNPs included *CSMD1*, *PTPRD*, and *RGS12*. <!--Genes at these loci included HSF2/SERINC1, TSN/LINC01826, BBS9, and DARS-AS1/CXCR4.-->
+```{r ldl-score-investigation-with-pcs, message=F}
+pca_df <- ldl_score_df %>%
+  filter(dm_intervention == T) %>%
+  select(baseline_chol, baseline_ldl, baseline_hdl, baseline_tg, baseline_glu, 
+         delta_ldl, SCORE) %>% 
+  na.omit()
+pca_input_df <- select(pca_df, -baseline_ldl, -delta_ldl, -SCORE)
+pca_fit <- prcomp(pca_input_df, scale.=T)
+pca_df <- cbind(pca_df, pca_fit$x[, 1:4])
+ldl_blandpcsonly_lm_fit <- lm(delta_ldl ~ PC1 + PC2 + PC3 + PC4, 
+                         data=pca_df)
+ldl_bladj_lm_fit_with_pcs <- lm(delta_ldl ~ SCORE + baseline_ldl + PC1 + PC2 + PC3 + PC4, 
+                                data=pca_df)
+```
+
+Based on its observed association in European-ancestry participants, the LDL-FRS was investigated further. Linear models showed that the LDL-FRS accounted for `r round(summary(ldl_basic_lm_fit)$r.squared * 100, 1)`% (95% CI: `r round(ldl_basic_r2_CI[2] * 100, 2)`, `r round(ldl_basic_r2_CI[1] * 100, 1)`) of the variance in 1-year LDL-C changes in the DM intervention arm. In baseline-adjusted models, this figure rose slightly to `r round((summary(ldl_bladj_lm_fit)$r.squared - summary(ldl_blonly_lm_fit)$r.squared) * 100, 1)`%, based on the change in R^2^ compared to a baseline-only model. Further adjustment for four principal components of baseline metabolic biomarkers (see Methods) did not materially affect this estimate (`r round((summary(ldl_bladj_lm_fit_with_pcs)$r.squared - summary(ldl_blandpcsonly_lm_fit)$r.squared) * 100, 1)`%). For comparison, baseline LDL-C plus these four principal components alone explained `r round(summary(ldl_blonly_lm_fit)$r.squared * 100, 1)`% of this variance, although we note that this estimate is likely biased upward due to regression to the mean effects (arising from measurement error and stochastic biological fluctuations) [@Barnett2005]. Additional baseline-adjusted models confirmed an interaction between DM trial arm and the LDL-FRS (p=`r round(tidy(ldl_interaction_lm_fit)$p.value[5], 3)`), supporting the specificity of this score for the fat-reduction arm, though the interaction directly with self-reported change in dietary fat was weaker (p=`r round(tidy(ldl_delta_fat_interaction_lm_fit)$p.value[5], 2)`). The LDL-FRS also showed specificity for LDL-C in that it did not predict changes in any other CRF (Supplementary Table 5). The 1760 component SNPs were annotated using Annovar [@Wang2010], revealing a predominance of intergenic and intronic variants and a set of genes with high numbers of independent SNPs contributing to the score (Figure 2A-D). Top genes by number of contributing SNPs included *CSMD1*, *PTPRD*, and *RGS12*.
 
 ```{r ldl-me-score, message=F}
-ldl_ME_score_df <- read_profile(paste0(res_dir, "ldl_ME_nominalME.profile")) %>%
+ldl_ME_score_df <- read_sscore(paste0(res_dir, "dosage_scores/ldl_ME_nominalME.sscore")) %>%
   mutate(fat_down=delta_fat < 0)
 
 ldl_ME_BL_fit <- lm(baseline_ldl ~ SCORE, data=ldl_ME_score_df)
@@ -572,30 +665,32 @@ ldl_per_protocol_plt <- ldl_per_protocol %>%
        y=expression(Delta*"LDL (baseline to year 1)")) +
   facet_wrap(vars(fat_down), labeller=labeller(fat_down=lpp_labels))
 
-ldl_frs_top10 <- ldl_score_df %>%
+ldl_frs_top10_df <- ldl_score_df %>%
   filter(!is.na(delta_ldl),
          dm_intervention == T) %>%
-  mutate(top10=SCORE > quantile(SCORE, 0.9)) %>%
+  mutate(top10=SCORE > quantile(SCORE, 0.9))
+ldl_frs_top10_summary <- ldl_frs_top10_df %>%
   group_by(top10) %>%
   summarise(mean_ldl_change=mean(delta_ldl))
+ldl_frs_top10_tt <- t.test(delta_ldl ~ top10, data=ldl_frs_top10_df)
 ```
 
-```{r ldl-score-characterization, message=F, fig.asp=1.1, fig.cap="LDL-FRS characterization. a) Distribution of LDL-FRS in WHI DM trial participants. b) Distribution of SNP weights constituting the LDL-FRS (shown as the natural log-transformed absolute values of the true weights). c) SNP counts in different loci types for LDL-FRS constituent SNPs. d) Genes are summarized by the number of annotated SNPs in the LDL-FRS (genes with at least 5 component SNPs are shown). e-f) 1-year changes in LDL-C in DM trial participants as a function of genetic scores. Mean changes in LDL-C (y-axis) are shown as a function of either LDL-FRS (e) or LDL-GRS (f) tertile (x-axis). Error bars represent standard errors. LDL-FRS: LDL-C fat response genetic score, LDL-GRS: LDL-C main-effect genetic score."}
+```{r ldl-score-characterization, message=F, fig.asp=1.1, fig.cap="LDL-FRS characterization. a) Distribution of LDL-FRS in WHI DM trial participants. b) Distribution of SNP weights constituting the LDL-FRS (shown as the natural log-transformed absolute values of the true weights). c) SNP counts in different loci types for LDL-FRS constituent SNPs. d) Genes are summarized by the number of annotated SNPs in the LDL-FRS (genes with at least 5 component SNPs are shown). e-f) 1-year changes in LDL-C in DM trial participants as a function of genetic scores. Mean changes in LDL-C (y-axis) are shown as a function of either LDL-FRS (e) or LDL-GRS (f) tertile (x-axis). Error bars represent standard errors. LDL-FRS: LDL-C fat response genetic score, GRS: LDL-C main-effect genetic risk score."}
 upper_panel <- plot_grid(ldl_score_hist, ldl_score_weights_hist, 
-                         annovar_type_plt, nrow=1, labels=c("a", "b", "c"))
+                         annovar_type_plt, nrow=1, labels=c("A", "B", "C"))
 lower_right_panel <- plot_grid(ldl_by_randomization_plt, ldl_ME_by_randomization_plt, 
-                               nrow=2, align="v", labels=c("e", "f"))
+                               nrow=2, align="v", labels=c("E", "F"))
 lower_panel <- plot_grid(annovar_gene_plt, lower_right_panel,
-                         nrow=1, rel_widths=c(1, 2), labels=c("d", ""))
+                         nrow=1, rel_widths=c(1, 2), labels=c("D", ""))
 plot_grid(upper_panel, lower_panel, nrow=2, rel_heights=c(1, 2))
 ```
 
-Differences in mean LDL-C changes during the DM trial across genetic score strata are shown in Figure 1e,f. As suggested by the regression results, those in the control arm trended towards less strong LDL-C reductions in higher LDL-FRS strata, while those in the fat-reduction arm showed the opposite trend. Furthermore, isolation of individuals at the highest extreme of the score (top 10%) revealed an LDL-C reduction of almost double that of the rest of the DM intervention  group (-39.0 versus -20.0 mg/dL). For comparison to the FRS, a main-effect genetic risk score (GRS) for LDL-C was developed using summary statistics from the Global Lipid Genetics Consortium meta-analysis [@Willer2013] and an identical pruning-and-thresholding procedure to that used for the GDI-based scores. As expected, this score was strongly predictive of baseline LDL-C concentrations (p=`r format(tidy(ldl_ME_BL_fit)$p.value[2], digits=3, scientific=T)`). However, unlike the GDI-based score, the GRS did not predict LDL-C changes in the DM intervention group (p=`r round(tidy(ldl_ME_fit)$p.value[2], 2)`; stratum-specific mean changes in Figure 1f).
+Differences in mean LDL-C changes during the DM trial across genetic score strata are shown in Figure 2E,F. As suggested by the regression results, those in the control arm trended towards less strong LDL-C reductions in higher LDL-FRS strata, while those in the fat-reduction arm showed the opposite trend. Furthermore, isolation of individuals at the highest extreme of the score (top 10%) revealed an LDL-C reduction of almost double that of the rest of the DM intervention  group (`r round(ldl_frs_top10_summary$mean_ldl_change[2], 1)` versus `r round(ldl_frs_top10_summary$mean_ldl_change[1], 1)` mg/dL; 95% CI for the difference: [`r round(ldl_frs_top10_tt$conf.int[1], 1)`, `r round(ldl_frs_top10_tt$conf.int[2], 1)`]). For comparison to the FRS, a main-effect genetic risk score (GRS) for LDL-C was developed using summary statistics from the Global Lipid Genetics Consortium meta-analysis [@Willer2013] and an identical pruning-and-thresholding procedure to that used for the FRS. As expected, this score was strongly predictive of baseline LDL-C concentrations (p=`r format(tidy(ldl_ME_BL_fit)$p.value[2], digits=3, scientific=T)`). However, unlike the FRS, the GRS did not predict LDL-C changes in the DM intervention group (p=`r round(tidy(ldl_ME_fit)$p.value[2], 2)`; stratum-specific mean changes in Figure 2F).
 
 ## LDL-FRS association with chronic disease outcomes
 
 ```{r outcomes, message=F, fig.asp=0.9, fig.cap="LDL-FRS prediction of chronic disease development. X-axis shows log-hazard ratio estimates for the LDL-FRS from Cox proportional hazards regression for a) coronary heart disease, b) ischemic stroke c) hemorrhagic stroke, d) diabetes, and e) non-CVD death. Separate estimates are shown for DM trial intervention arm, control arm, and the same strata filtered for FFQ-reported fat reduction or increase, respectively. Cox models are adjusted for age at baseline and include a random effect for WHI genotyping sub-study. Error bars represent 95% confidence interval estimates for the regression coefficients."}
-ldl_score_df <- read_profile(paste0(res_dir, "fat_pct_binary_ldl_whi_white_nominalME.profile")) %>%
+ldl_score_df <- read_sscore(paste0(res_dir, "dosage_scores/fat_pct_binary_ldl_whi_white_nominalME.sscore")) %>%
   mutate(fat_down=delta_fat < 0)
 # dm_phenos <- read_delim(paste0(res_dir, "whi_white_DM_phenos_6.txt"), delim=" ") %>%
 #   filter(dm_trial == T)
@@ -676,7 +771,7 @@ with(disease_plots, {
             # death, 
             # cvd_death, 
             dm, non_cvd_death, legend,
-            ncol=2, labels=c("a", "b", "c", "d", "e")) 
+            ncol=2, labels=c("A", "B", "C", "D", "E")) 
 })
 
 hemo_fit <- coxph(Surv(time_to_hemo_stroke, hemo_stroke) ~ SCORE + age + cluster(dataset),
@@ -697,11 +792,12 @@ disease_fits_interaction <- lapply(
     int_estimates$p.value 
   })
 names(disease_fits_interaction) <- names(outcome_names)
+
+chd_tte_mean <- mean(ldl_score_df_with_outcomes$time_to_chd, na.rm=T) / 365
+chd_tte_sd <- sd(ldl_score_df_with_outcomes$time_to_chd, na.rm=T) / 365
 ```
 
-Next, the LDL-FRS was tested for relationships with incident disease outcomes over approximately 22 years of follow-up (Figure 2). Cox proportional hazards models were used, adjusting for age at baseline and including a random effect for genotyping sub-study. This frailty/random effects model has been recommended for optimizing power in multi-center time-to-event models [@Munda2014]. In addition to intervention versus control arm, another set of "per protocol-like" strata was produced by additionally filtering for FFQ-based self-reported fat reduction (in the intervention group) or fat increase (in the control group). CHD qualitatively showed the expected interaction, i.e. a stronger inverse association between LDL-FRS and disease risk in the fat reduction group). Ischemic stroke showed a similar pattern, with a risk reduction only in the fat reduction group (p = 0.020). In contrast, hemorrhagic stroke, while having a low number of events (44 in total), showed a positive association only in the fat reduction group (p = 0.011). Results for diabetes qualitatively mirrored those for CHD and ischemic stroke, while those for non-CVD death did not vary across groups. <!--Hemorrhagic stroke showed significant positive associations with the LDL-FRS only in the fat reduction group.--> These cross-arm differences were generally strengthened when comparing the per protocol-like strata, with a much stronger effect for CHD in the confirmed fat reduction stratum (p = 4.07e-5). In DM trial arm interaction models (score x arm), only ischemic stroke reached nominal statistical significance (p < 0.05).
-<!--While most relationships were equivocal (stratum-specific and comparisons across strata), a few stood out. 
-Using the second ("per protocol-like") stratification, the LDL-FRS associated with a reduction in MI risk in those reducing fat versus an increase in MI risk in those increasing fat (p for interaction = 0.078).--> 
+Next, the LDL-FRS was tested for relationships with incident disease outcomes over approximately 22 years of follow-up using Cox proportional hazards models (Figure 3). The mean follow-up time for coronary heart disease (CHD) was 8.7 years (std. dev. = 5.6), with similar values for other outcomes. In addition to intervention versus control arm, another set of "per protocol-like" strata was produced by additionally filtering for FFQ-based self-reported fat reduction (in the intervention group) or fat increase (in the control group). CHD qualitatively showed the expected interaction, i.e. a stronger inverse association between LDL-FRS and disease risk in the fat reduction group). Ischemic stroke showed a similar pattern, with a risk reduction only in the fat reduction group (p = `r round(tidy(disease_fits$isch_stroke$dm_int)$p.value[1], 3)`). In contrast, hemorrhagic stroke, while having a low number of events (44 in total), showed a positive association only in the fat reduction group (p = `r round(tidy(disease_fits$hemo_stroke$dm_int)$p.value[1], 3)`). Results for diabetes qualitatively mirrored those for CHD and ischemic stroke, while those for non-CVD death did not vary across groups. These cross-arm differences were generally strengthened when comparing the per protocol-like strata, with a much stronger effect for CHD in the confirmed fat reduction stratum (p = `r round(tidy(disease_fits$chd$fat_down)$p.value[1], 3)`). In DM trial arm interaction models (score x arm), only ischemic stroke reached nominal statistical significance (p < 0.05).
 
 ```{r cvd-outcomes-experimental, include=F, message=F, eval=F}
 # sample_ids <- read_tsv("../data/raw/whi/gen/imputedSampleInfo.txt", skip=15) %>%
@@ -757,41 +853,39 @@ save("rfs", "pretty_rfs",
      "quanto_res",
      "fat_score_res_nofilter", "fat_score_res", "fat_score_res_suggfilter",
      "fat_score_res_ca", "fat_score_res_black", "fat_score_res_his",
+     "fat_score_res_ldpred",
      "ldl_score_res",
      file="../output/diet_response_objects.RData")
+
+read_tsv(paste0(res_dir, "fat_pct_binary_ldl_whi_white_nominalME.avinput.variant_function"),
+         col_names=c("Type", "Gene", "CHR", "POS", "POS2", "REF", "ALT", "SNP", "BETA")) %>%
+  arrange(desc(abs(BETA))) %>%
+  mutate(Gene=gsub("\\(dist=[0-9]*\\)|\\(dist=NONE\\)", "", Gene),
+         Gene=gsub("\\(NM.*\\)", "", Gene),
+         Gene=gsub(",", "/", Gene)) %>%
+  select(SNP, Gene, CHR, POS, REF, ALT, BETA) %>%
+  write_tsv("ldl_frs_coefs.csv")
 ```
 
 # Discussion
 
-Diet response scores have shown some success in predicting the response of cardiovascular risk factors (CRFs) to nutritional interventions, but they are often based solely on main effects or single GDI SNPs. Here, we explored the potential for gene diet interaction (GDI)-based diet responder score development, leveraging the multi-trial setup of the Women's Health Initiative. We developed what to our knowledge is the first example of a diet response score based on a hypothesis-free genome scan for each of six risk factors, and showed preliminary evidence for the viability of a LDL-C fat response score. The set of SNPs used for each score were limited to those showing nominal main effects in large-scale GWAS as a compromise between discovery and utilization of prior information, which was supported by the weaker results in sensitivity models incorporating either stronger (suggestive main-effect) or weaker (all SNPs) variant filters (Supp. Table S2).
+Diet response scores have shown some success in predicting the response of cardiovascular risk factors (CRFs) to nutritional interventions, but they are often based solely on main effects or single GDI SNPs. Here, we explored the potential for genome-wide gene diet interaction (GDI)-based diet responder score development, leveraging the multi-trial setup of the Women's Health Initiative. We developed what to our knowledge is the first example of a diet response score based on a hypothesis-free genome scan for each of six risk factors, and showed preliminary evidence for the viability of a LDL-C fat response score. The set of SNPs used for each score were limited to those showing nominal main effects in large-scale GWAS as a compromise between discovery and utilization of prior information, which was supported by the weaker results in sensitivity models incorporating either stronger (suggestive main-effect) or weaker (all SNPs, LDpred) variant filters (Supplementary Table 2).
 
 Though FRS for six CRFs were developed and tested, only that for LDL-C showed nominal significance in predicting 1-year changes in the corresponding CRF. Multiple factors could explain this lack of predictive performance in general. First, analysis in observational datasets carries with it the potential for confounding of the observed relationships. Second, FFQs are imprecise instruments for measuring dietary intake, and though the FFQs used in the present study were optimized for detection of dietary fat, there was potential for substantial misclassification of this environmental exposure. Third, power calculations shown here and elsewhere suggest that a cohort of this size may not be powered to detect many very small gene-environment interactions such as are sought in genome-wide approaches like the one used here.
 
-*CSMD1*, *PTPRD*, and *RGS12* stood out as genes containing the highest number of SNPs in the LDL-FRS (11, 9, and 9, respectively, after LD-pruning for r^2^ < 0.5. *CSMD1* variants are notably associated with LDL-C response to statin treatment [@Thompson2009] as well as SBP response to a high-salt diet [Newton-Cheh2009]. *CSMD1* has also shown epigenetic associations with LDL-C [@Bell2012] as well as response to modification of dietary fat composition [@Perfilyev2017]. *PTPRD* variants modulate the response of T2D patients to pioglitazone therapy [@Pei2013] and show suggestive associations with eating behaviors (caloric intake at dinner) [@Comuzzie2012]. *RGS12* has been linked to LDL-C in GWAS [@Spracklen2017]. Altogether, these genes have literature evidence for relationships to dietary intake, response to cardiometabolic therapies, and LDL-C, but have not until now been shown to directly modify the LDL-C response to dietary fat proportions. We note that there is a bias towards identifying LDL-C-related variants in the LDL-FRS, as only nominally-associated main-effect SNPs were used as input to the score development algorithm.
+*CSMD1*, *PTPRD*, and *RGS12* stood out as genes containing the highest number of SNPs in the LDL-FRS (11, 9, and 9, respectively, after LD-pruning for r^2^ < 0.5. *CSMD1* variants are notably associated with LDL-C response to statin treatment [@Thompson2009] as well as SBP response to a high-salt diet [@Newton-Cheh2009]. *CSMD1* has also shown epigenetic associations with LDL-C [@Bell2012] as well as response to modification of dietary fat composition [@Perfilyev2017]. *PTPRD* variants modulate the response of T2D patients to pioglitazone therapy [@Pei2013] and show suggestive associations with eating behaviors (caloric intake at dinner) [@Comuzzie2012]. *RGS12* has been linked to LDL-C in GWAS [@Spracklen2017]. Altogether, these genes have literature evidence for relationships to dietary intake, response to cardiometabolic therapies, and LDL-C, but have not until now been shown to directly modify the LDL-C response to dietary fat proportions. We note that there is a bias towards identifying LDL-C-related variants in the LDL-FRS, as only nominally-associated main-effect SNPs were used as input to the score development algorithm.
 
-A reasonable body of literature exists establishing GDIs for both dietary fat on CRFs [@Cuda2012; @Zheng2015] and general dietary exposures on LDL-C [@Ordovas2011]. Multiple studies have looked specifically at genetic variants modulating the LDL-C response to dietary fat. For example, a caloric restriction intervention in type 2 diabetics was more effective in reducing LDL-C in ApoE4 carriers (-15.6% versus -0.7%) [@Saito2004]. Two studies using the POUNDS LOST trial found relationships of specific polymorphisms with 2-year changes in response to a dietary fat intervention. Carriers of a risk allele at the APOA5 variant rs964184 show a decrease of 7.5 mg/dL in LDL-C in low-fat but not high-fat interventions [@Zhang2012], and carriers of the minor allele at CETP rs3764261 show an 8.9 mg/dL greater decrease in LDL-C on a low-fat diet [@Xu2015]. Our observed effect size of a 5.4 mg/dL decrease in LDL-C is of a similar magnitude to these findings, and emerged despite the multi-factorial nature of the WHI DM trial (which incorporated additional nutrition recommendations). The observed variance explained of 3.4% for the LDL-FRS means that the score, while contributing meaningfully to the prediction, does not capture most of the interindividual variability in LDL-C response to the WHI DM trial intervention. Based on prior observations of an inflection point in the impact of various genetic risk scores near the 90th percentile [@Khera2018], we additionally evaluated the impact of LDL-FRS in the top 10%, finding almost double the LDL-C reduction in DM intervention participants with values at this extreme.
+A reasonable body of literature exists establishing GDIs for both dietary fat on CRFs [@Cuda2012; @Zheng2015] and general dietary exposures on LDL-C [@Ordovas2011]. Multiple studies have looked specifically at genetic variants modulating the LDL-C response to dietary fat. For example, a caloric restriction intervention in type 2 diabetics was more effective in reducing LDL-C in ApoE4 carriers (-15.6% versus -0.7%) [@Saito2004]. In the POUNDS LOST trial, carriers of specific alleles at APOA5 and CETP variants saw 7.5 and 8.9 mg/dL greater LDL-C decreases during a low-fat dietary intervention [@Zhang2012; @Xu2015]. Our observed effect size of a 5.4 mg/dL decrease in LDL-C is of a similar magnitude, and emerged despite the multi-factorial nature of the WHI dietary intervention. The observed variance explained of 3.4% for the LDL-FRS means that the score, while contributing meaningfully to the prediction, does not capture most of the interindividual variability in LDL-C response to the WHI DM trial intervention. This explanatory power was modestly strengthened after adjustment for baseline LDL-C as well as principal components reflecting baseline metabolic biomarker patterns. Based on prior observations of an inflection point in the impact of various genetic risk scores near the 90th percentile [@Khera2018], we additionally evaluated the impact of LDL-FRS in the top 10%, finding almost double the LDL-C reduction in DM intervention participants with values at this extreme. 
 
-There has been interest in the past in using main-effect genetic risk scores (GRS) as genetic variables in order to improve statistical power to detect gene-environment interactions [@Aschard2016]. Such interactions may be viewed from a lens in which genetic risk corresponds to a predisposition that is only triggered in certain environments (e.g. dietary behaviors). Here, we observed only a minor association of a main-effect GRS for LDL-C with greater LDL-C reductions in the DM trial (p=`r format(tidy(ldl_ME_BL_fit)$p.value[2], scientific=T, digits=2)`). This trend runs counter to a prior observation of greater lifestyle intervention effectiveness for LDL-C reduction in those with low genetic risk of hyperlipidemia [@Zubair2019]. This discrepancy may be due to differences between the DM trial and the personalized diet and lifestyle changes recommended in the intervention in question. Regardless, the meaningful increase in predictive power of the GDI-based FRS compared to the main-effect GRS for LDL-C indicates the value in using interaction-based scores rather than simple genetic predispositions for the development of personalized dietary recommendations.
+The potential clinical utility of these findings can be evaluated in the context of a framework recently put forth for the scientific assessment of gene-diet interaction [@Grimaldi2017]. This genetic score was developed using a rigorous study design starting in an observational cohort an validating in a randomized trial, and relies on an "intermediate" interaction in which not only the dietary intervention but also multiple other biological factors are expected to influence LDL-C concentrations. Given that the biological plausibility is difficult to determine for a polygenic score and that the scientific validity of this FRS x diet interaction would be classified as "possible" to "probable", additional validation of this or similar scores would be needed to render it clinically actionable.
 
-A diet response score such as that developed here is most useful if its value extends beyond just risk factor changes and predicts downstream changes in chronic disease and mortality risk. Suggestive interactions for CHD, ischemic stroke, and diabetes were apparent across strata (Figure 2a,b,d), corresponding to a decreased risk in fat-reduction participants (whose LDL-C would be expected to drop more prominently according to the score). In contrast, hemorrhagic stroke showed the opposite trend, with a positive score-disease relationship only in the fat reduction group. This result is in line with existing evidence for the detrimental effects of low LDL-C on hemorrhagic stroke risk [@Sun2019a]. Non-CVD death showed no major associations, which could be expected due to the dominance of this category by cancer outcomes and the equivocal associations of cancer with lipids [@Koene2016]. <!--Somewhat surprisingly, we observed that a fat-response score predisposing individuals to a positive fat-LDL-C correlation is inversely associated with risk of death most strongly control individuals with self-reported fat increases, whose LDL-C would be expected to rise. However, it is well-appreciated that LDL-C associates inversely with survival in older populations [@Ravnskov2016] and this inverse relationship in the control group was not notably different than that in the intervention group.--> We note that all disease outcome relationships assessed here are subject to the major caveat that dietary evolution and decreased adherence likely developed over time in many subjects, diluting the utility of the randomization and 1-year changes used for stratification in Figure 2.
+There has been interest in the past in using main-effect genetic risk scores (GRS) as genetic variables in order to improve statistical power to detect gene-environment interactions [@Aschard2016]. Such interactions may be viewed from a lens in which genetic risk corresponds to a predisposition that is only triggered in certain environments (e.g. dietary behaviors). Here, we observed only a minor association of a main-effect GRS for LDL-C with greater LDL-C reductions in the DM trial (p=`r format(tidy(ldl_ME_fit)$p.value[2], scientific=T, digits=2)`). This trend runs counter to a prior observation of greater lifestyle intervention effectiveness for LDL-C reduction in those with low genetic risk of hyperlipidemia [@Zubair2019]. This discrepancy may be due to differences between the DM trial and the personalized diet and lifestyle changes recommended in the intervention in question. Regardless, the meaningful increase in predictive power of the FRS compared to the main-effect GRS for LDL-C indicates the value in using interaction-based scores rather than simple genetic predispositions for the development of personalized dietary recommendations.
 
-The present study had the advantage of developing a GDI-based dietary fat score in almost 10,000 women and testing in a dietary intervention trial using independent individuals from the same population. However, nominal main-effect SNPs were prioritized to improve statistical power given this moderate sample size, an approach which may fail to identify interactions with effect directions opposite that of the main effect. Smaller fractions of alternate ancestries in this population also made development of ancestry-specific response scores unrealistic. Additionally, the DM trial intervention in which the scores were tested may not exactly match the intervention relevant to the purely fat reduction-focused score developed here; it included additional non-fat-related dietary recommendations that may have effected the interactions examined here, and did not ultimately achieve its intended 20% fat reduction. Finally, this study only examined women, despite the fact that CRF profiles and their genetic trait architectures are known to vary across sexes [@Knopp2006].
+A useful diet response score should also predict downstream changes in chronic disease risk. Suggestive interactions for CHD, ischemic stroke, and diabetes were apparent across strata (Figure 3A,B,D), corresponding to a decreased risk in fat-reduction participants (whose LDL-C would be expected to drop more prominently according to the score). In contrast, hemorrhagic stroke showed the opposite trend, with a positive score-disease relationship only in the fat reduction group. This result is in line with existing evidence for the detrimental effects of low LDL-C on hemorrhagic stroke risk [@Sun2019a]. Non-CVD death showed no major associations, which could be expected due to the dominance of this category by cancer outcomes and the equivocal associations of cancer with lipids [@Koene2016]. We note that all disease outcome relationships assessed here are subject to the major caveat that dietary evolution and decreased adherence likely developed over time in many subjects, diluting the utility of the randomization and 1-year changes used for stratification in Figure 3.
 
-In summary, we present a method for the development of diet response scores based on genome-wide gene-diet interaction study summary statistics. While the resulting dietary fat response scores are not all informative, a score focused on LDL-C is predictive of 1-year LDL-C changes during a fat reduction trial. Its performance is risk factor-specific, and is superior to that of a main-effect genetic risk score for LDL-C. Furthermore, it displays suggestive relationships with chronic disease outcomes, following known coronary heart disease biology and adding a new perspective to known discrepancies between associations of LDL-C with cardiovascular disease and stroke subtypes. These findings support the utility of gene-diet interactions for personalized nutrition while highlighting the need for increased sample sizes and improved diet measures for the discovery of robust genetic predictors of diet response.
+The present study had the advantage of developing a diet-focused genetic score in almost 10,000 women and testing in a dietary intervention trial using independent individuals from the same population. However, nominal main-effect SNPs were prioritized to improve statistical power given this moderate sample size, an approach which may fail to identify interactions with effect directions opposite that of the main effect. Smaller fractions of alternate ancestries in this population also made development of ancestry-specific response scores unrealistic. Additionally, the DM trial intervention in which the scores were tested may not exactly match the intervention relevant to the purely fat reduction-focused score developed here; it included additional non-fat-related dietary recommendations that may have affected the interactions examined here, and did not ultimately achieve its intended 20% fat reduction. Finally, this study only examined women, despite the fact that CRF profiles and their genetic trait architectures are known to vary across sexes [@Knopp2006].
 
-
-<!--
-Old:
-Recently, a 14-SNP score designed based on prior GDI literature was shown to predict differences in HDL-C response to a saturated fat-reduction trial in overweight adults (-6 mg/dL average change in those with high versus low response scores) [@Guevara-Cruz2019]. ____ link to our results 
-
-A reasonable body of literature exists establishing GDIs for both dietary fat on CRFs [@Cuda2012; @Zheng2015] and general dietary exposures on HDL-C [@Ordovas2011]. A few studies have looked specifically at genetic variants modulating the HDL-C response to dietary fat. Cross-sectionally in the Framingham Heart Study, the -514(C/T) LIPC polymorphism associates with a 16% greater HDL-C in those with two minor alleles and high dietary fat intake, versus a 10% lower HDL-C in those with two minor alleles and low dietary fat intake [@Ordovas2002]. In addition, two studies using the POUNDS LOST trial find relationships of specific polymorphisms with 2-year changes in response to a dietary fat intervention. Carriers of a risk allele at the APOA5 variant rs964184 show an approximately 3.5 mg/dL greater high-fat diet-related increase in HDL-C [@Zhang2012], and carriers of the minor allele at CETP rs3764261 show a 4.4% lower high-fat diet-related increase in HDL-C [@Qi2015]. Recently, a 14-SNP score designed based on prior GDI literature was shown to predict differences in HDL-C response to a saturated fat-reduction trial in overweight adults (-6 mg/dL average change in those with high versus low response scores) [@Guevara-Cruz2019]. ____ link to our results
-
-* Tested a whole series and only HDL came up as interesting for prediction. 
-    - Made scores based on suggestive main-effect SNPs (reference the (Winkler?) paper from Danielle)
-    - May be a continuing power issue -- reference the supp table with power calcs
-    - However, power has to be balanced with population specificity
-    - HDL scores developed in white individuals did not successfully predict in the full combined-ancestry DM trial. However, the failure of genetic risk scores to generalize across populations has been been consistently demonstrated [@Martin2017].
--->
+In summary, we present a method for the development of diet response scores based on genome-wide, observational gene-diet interaction study summary statistics. We provide proof-of-concept that a genetic score focused on LDL-C may be useful for predicting changes in both cardiometabolic risk factors and long-term disease risk during a dietary intervention. However, not all dietary fat response scores derived here were informative, highlighting the continued need for increased sample sizes and improved diet measures for the discovery of sufficiently robust genetic interactions genome-wide. Our results provide a foundation for future investigations using new datasets and dietary variables to explore the genetic architecture of diet response.
 
 # Acknowledgements
 

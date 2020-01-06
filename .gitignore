@@ -22,8 +22,12 @@ $ Microsoft Office files
 *.docx
 *.pptx
 
+# Heavy .tiff files
+*.tiff
+
 # Submissions
 doc/module_ewas/past_submissions/*
+doc/ashg2019/*
 *cover_letter*
 
 # Mac-specific

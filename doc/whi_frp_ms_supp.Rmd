@@ -7,10 +7,14 @@ output:
 title: "Supplementary Materials: A gene-diet interaction-based score predicts response to dietary fat in the Women's Health Initiative"
 bibliography: whi_frp_ms.bib
 csl: ajcn.csl
+header-includes: 
+- \usepackage{float}
 ---
 
+Kenneth Westerman, Qing Liu, Simin Liu, Laurence D. Parnell, Paola Sebastiani, Paul Jacques, Dawn L. DeMeo, José M. Ordovás
+
 ```{r setup, include=F}
-knitr::opts_chunk$set(echo=F, fig.path="figures/")
+knitr::opts_chunk$set(echo=F, fig.path="figures/", fig.pos="h")
 suppressMessages(silent <- lapply(
   c("knitr", "kableExtra", "tidyverse", "broom", "cowplot",
     "jtools", "ggstance"), 
@@ -24,9 +28,9 @@ load("../output/diet_response_objects.RData")
 
 \newcommand{\beginsupplement}{%
         \setcounter{table}{0}
-        \renewcommand{\thetable}{S\arabic{table}}%
+        \renewcommand{\thetable}{\arabic{table}}%
         \setcounter{figure}{0}
-        \renewcommand{\thefigure}{S\arabic{figure}}%
+        \renewcommand{\thefigure}{\arabic{figure}}%
      }
 \beginsupplement
 
@@ -39,30 +43,6 @@ quanto_res %>%
   footnote(general="Power calculations were undertaken using the Quanto tool, with parameters set as follows: additive model, SNP main effect of 0.5% of trait variance, binary environment with 50% prevalence, and environmental effect explaining 10% of the trait variance.",
            general_title="",
            threeparttable=T)
-```
-
-```{r show-workflow, fig.cap="Workflow of the study. First, a series of genome-wide interaction studies (GWIS) were conducted with dietary fat as the exposure for each of six cardiovascular risk factors (CRFs). Next, dietary fat response scores were developed using GWIS summary statistics and tested for the prediction of one-year CRF changes in the Dietary Modification trial intervention arm. Finally, the LDL-C score was tested for the prediction of differential effects on chronic disease development over approximately twenty years of follow-up."}
-include_graphics("workflow.pdf")
-```
-
-```{r show-qq-plots, fig.asp=1, fig.cap="Q-Q plots from individual CRF GWIS. The distribution of p-values from each GWIS is plotted against the expected uniform p-value distribution. Plots correspond to: a) BMI, b) SBP, c) LDL-C, d) HDL-C, e) TG, and f) FG."}
-res_dir <- "../data/processed/whi_prediction/"
-outcome_transforms <- list(
-  bmi="logBMI",
-  sbp="logSBP",
-  hdl="logHDL",
-  tg="logTG",
-  glu="logGLU",
-  ldl="ldl"
-)
-a <- lapply(rfs, function(rf) {
-  qq_path <- paste0(res_dir, "fat_pct_binary_", outcome_transforms[rf], 
-                    "_whi_white_qq.png")
-  grid::rasterGrob(png::readPNG(qq_path), interpolate=T)
-})
-
-plot_grid(a[[1]], a[[2]], a[[3]], a[[4]], a[[5]], a[[6]],
-          nrow=3, labels=c("a", "b", "c", "d", "e", "f"))
 ```
 
 ```{r show-test-scores-alternate-filters, message=F}
@@ -95,6 +75,7 @@ bind_rows(all=fat_score_res_nofilter,
          all_n_snps, all_effect_std, all_p.value,
          nom_n_snps, nom_effect_std, nom_p.value,
          sugg_n_snps, sugg_effect_std, sugg_p.value) %>%
+  slice(match(pretty_rfs, rf)) %>%
   setNames(c("CRF", "N\\textsuperscript{1}", rep(c("\\# SNPs\\textsuperscript{2}", "SES\\textsuperscript{3}", "P-value"), 3))) %>%
   kable(booktabs=T, linesep="", longtable=T, escape=F,
         caption="Responder score effects on CRF changes in DM trial participants across main-effect filter thresholds") %>%
@@ -106,6 +87,10 @@ bind_rows(all=fat_score_res_nofilter,
     general_title="",
     threeparttable=T)
 ```
+
+\newpage
+
+Online Supplementary Materials: A gene-diet interaction-based score predicts response to dietary fat in the Women's Health Initiative
 
 ```{r show-test-scores-cross-ancestry, message=F}
 bind_rows(ca=fat_score_res_ca,
@@ -127,10 +112,48 @@ bind_rows(ca=fat_score_res_ca,
          ca_n, ca_effect_std, ca_p.value,
          black_n, black_effect_std, black_p.value,
          hispanic_n, hispanic_effect_std, hispanic_p.value) %>%
-  setNames(c("CRF", rep(c("N", "SES\\textsuperscript{1}", "P-value"), 3))) %>%
+  slice(match(pretty_rfs, rf)) %>%
+  setNames(c("CRF", rep(c("N\\textsuperscript{1}", "SES\\textsuperscript{2}", "P-value"), 3))) %>%
   kable(booktabs=T, linesep="", longtable=T, escape=F,
         caption="Responder score effects on CRF changes in DM trial participants across ancestries") %>%
   add_header_above(c("", "All combined"=3, "Black"=3, "Hispanic"=3)) %>%
+  footnote(number=c(
+    "Sample size available with 1-year follow-up measurements for each CRF",
+    "Std. effect size represents the regression coefficient estimate in terms of CRF standard deviation per responder score standard deviation"),
+    general_title="",
+    threeparttable=T)
+```
+
+```{r show-test-scores-ldpred, message=F}
+translate_fractions <- c(
+  "_p1.0000e-03"="0.001",
+  "_p1.0000e-02"="0.01",
+  "_p1.0000e-01"="0.1"
+)
+
+fat_score_res_ldpred %>% 
+  select(rf, f, n, effect_std, p.value) %>%
+  filter(f %in% names(translate_fractions)) %>%
+  mutate(f=translate_fractions[f],
+         effect_std=round(effect_std, 3),
+         p.value=ifelse(p.value < 1e-3, 
+                        format(p.value, digits=3, scientific=T),
+                        round(p.value, 3)),
+         rf=pretty_rfs[rf]) %>%
+  mutate_all(as.character) %>%
+  gather(key=trait, value=value, n:p.value) %>%
+  mutate(f_trait=paste(f, trait, sep="_")) %>%
+  select(-f, -trait) %>%
+  spread(key=f_trait, value=value) %>%
+  select(rf,
+         `0.001_effect_std`, `0.001_p.value`,
+         `0.01_effect_std`, `0.01_p.value`,
+         `0.1_effect_std`, `0.1_p.value`) %>%
+  slice(match(pretty_rfs, rf)) %>%
+  setNames(c("CRF", rep(c("SES\\textsuperscript{1}", "P-value"), 3))) %>%
+  kable(booktabs=T, linesep="", longtable=T, escape=F,
+        caption="LDpred-based responder score effects on CRF changes in DM trial participants across causal variant fractions (F)") %>%
+  add_header_above(c(" "=1, "F = 0.001"=2, "F = 0.01"=2, "F = 0.1"=2)) %>%
   footnote(number=c(
     "Standardized effect size (SES) represents the regression coefficient estimate in terms of CRF standard deviation per responder score standard deviation"),
     general_title="",
@@ -140,15 +163,37 @@ bind_rows(ca=fat_score_res_ca,
 ```{r show-test-ldl-scores-other-rfs, message=F}
 ldl_score_res %>%
   filter(test_rf != "ldl") %>%
+  mutate(n_snps=1760) %>%
   select(test_rf, n_snps, n, effect_std, p.value) %>%
   mutate(effect_std=round(effect_std, 2),
          p.value=round(p.value, 2),
          test_rf=pretty_rfs[test_rf]) %>%
-  setNames(c("Outcome risk factor", "\\# SNPs in risk score", "Sample size",
-             "Std. effect size\\textsuperscript{1}", "P-value")) %>%
+  setNames(c("Outcome risk factor", "\\# SNPs in risk score", "N\\textsuperscript{1}",
+             "Std. effect size\\textsuperscript{2}", "P-value")) %>%
   kable(booktabs=T, linesep="", longtable=T, escape=F,
         caption="LDL-FRS effects on alternate CRF changes in DM trial participants") %>%
   footnote(number=c(
+    "Sample size available with 1-year follow-up measurements for each CRF",
     "Std. effect size represents the regression coefficient estimate in terms of CRF standard deviation per responder score standard deviation"),
     threeparttable=T)
+```
+
+```{r show-qq-plots, fig.asp=1, fig.cap="Q-Q plots from individual CRF GWIS. The distribution of p-values from each GWIS is plotted against the expected uniform p-value distribution. Plots correspond to: A) BMI, B) SBP, C) LDL-C, D) HDL-C, E) TG, and F) FG. Lambda values above each plot represent genomic inflation estimates. BMI: body mass index, SBP: systolic blood pressure, LDL-C: LDL cholesterol, HDL-C: HDL cholesterol, TG: triglycerides, FG: fasting glucose."}
+res_dir <- "../data/processed/whi_prediction/"
+outcome_transforms <- list(
+  bmi="logBMI",
+  sbp="logSBP",
+  hdl="logHDL",
+  tg="logTG",
+  glu="logGLU",
+  ldl="ldl"
+)
+a <- lapply(rfs, function(rf) {
+  qq_path <- paste0(res_dir, "fat_pct_binary_", outcome_transforms[rf], 
+                    "_whi_white_qq.png")
+  grid::rasterGrob(png::readPNG(qq_path), interpolate=T)
+})
+
+plot_grid(a[[1]], a[[2]], a[[3]], a[[4]], a[[5]], a[[6]],
+          nrow=3, labels=c("A", "B", "C", "D", "E", "F"))
 ```
