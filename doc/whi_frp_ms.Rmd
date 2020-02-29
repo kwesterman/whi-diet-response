@@ -1,14 +1,14 @@
 ---
 output: 
-  # pdf_document:
-  #   # citation_package: natbibm
-  #   keep_tex: true
-  #   fig_caption: true
-  #   latex_engine: pdflatex
-  #   # template: ~/Dropbox/miscelanea/svm-r-markdown-templates/svm-latex-ms.tex
-  word_document:
+  pdf_document:
+    # citation_package: natbibm
+    keep_tex: true
     fig_caption: true
-    reference_docx: word-styles-reference.docx
+    latex_engine: pdflatex
+    # template: ~/Dropbox/miscelanea/svm-r-markdown-templates/svm-latex-ms.tex
+  # word_document:
+  #   fig_caption: true
+  #   reference_docx: word-styles-reference.docx
 always_allow_html: true
 title: "A gene-diet interaction-based score predicts response to dietary fat in the Women's Health Initiative"
 bibliography: whi_frp_ms.bib
@@ -17,7 +17,7 @@ csl: ajcn.csl
 
 ```{r setup, include=F}
 knitr::opts_chunk$set(echo=F, fig.path="figures/")
-options(kableExtra.auto_format = FALSE)
+# options(kableExtra.auto_format = FALSE)
 suppressMessages(silent <- lapply(
   c("knitr", "kableExtra", "tidyverse", "broom", "cowplot",
     "jtools", "ggstance"), 
@@ -108,7 +108,7 @@ pretty_rfs <- c(bmi="BMI", sbp="SBP", ldl="LDL-C", hdl="HDL-C", tg="TG", glu="FG
 
 **Design:** A genome-wide interaction study was undertaken for each CRF in women (n ~ 9000) not participating in the Dietary Modification (DM) trial, which focused on the reduction of dietary fat. Genetic scores based on these analyses were developed using a pruning-and-thresholding approach and tested for the prediction of one-year CRF changes as well as long-term chronic disease development in DM trial participants (n ~ 5000). 
 
-**Results:** Only one of these genetic scores, for LDL-cholesterol (LDL-C), predicted changes in the associated CRF. This 1760-variant score explained 3.7% of the variance in one-year LDL-C changes in the intervention arm, but was unassociated with changes in the control arm. In contrast, a main-effect genetic risk score for LDL-C was not useful for predicting dietary fat response. Further investigation of this score with respect to downstream disease outcomes revealed suggestive differential associations across DM trial arms, especially with respect to coronary heart disease and stroke subtypes. 
+**Results:** Only one of these genetic scores, for LDL-cholesterol (LDL-C), predicted changes in the associated CRF. This 1760-variant score explained 3.7% (95% CI: 0.09, 11.9) of the variance in one-year LDL-C changes in the intervention arm, but was unassociated with changes in the control arm. In contrast, a main-effect genetic risk score for LDL-C was not useful for predicting dietary fat response. Further investigation of this score with respect to downstream disease outcomes revealed suggestive differential associations across DM trial arms, especially with respect to coronary heart disease and stroke subtypes. 
 
 **Conclusions:** These results lay the foundation for the combination of many genome-wide gene-diet interactions for diet response prediction while highlighting the need for further research and larger samples in order to achieve robust biomarkers for use in personalized nutrition.
 
@@ -271,6 +271,10 @@ read_profile <- function(filename, df) {
     select(IID, SCORE, CNT) %>%
     inner_join(dm_phenos, by=c("IID"="SampleID"))
 }
+
+# a <- read_profile("../data/processed/whi_prediction/fat_pct_binary_ldl_whi_white_nominalME.profile")
+# plot(x=a$SCORE, y=b$SCORE, xlab="Hard-call-based LDL-FRS score", ylab="Dosage-based LDL-FRS score")
+# hist(a$CNT/ 2, xlab="# SNPs non-missing for hard-call-based score", ylab="Count", main="")
 
 read_sscore <- function(filename, df) {
   read_table2(filename) %>%
@@ -466,7 +470,7 @@ fat_score_res_his <- tibble(rf=rfs) %>%
 dm_phenos <- white_dm_phenos
 ```
 
-As the scores were developed to predict a positive interaction with dietary fat intake, the expected direction of the FRS effect on risk factors in the present fat-reduction trial would be negative. Of the fat response scores examined, only the LDL-C fat response score (LDL-FRS) was predictive at p < 0.05 of the associated CRF change in DM trial participants in the fat-reduction arm (passing a Bonferroni correction for the 6 CRFs tested in baseline-adjusted sensitivity models). For this score, the standardized effect size was `r round(fat_score_res$effect_std[fat_score_res$rf == "ldl"], 2)` (corresponding to a `r round(-fat_score_res$effect_per_sd[fat_score_res$rf == "ldl"], 2)` mg/dL greater decrease in LDL-C per score standard deviation; p=`r round(fat_score_res$p.value[fat_score_res$rf == "ldl"], 3)`). We note that the sample size of European-ancestry DM trial participants with follow-up measurements was much smaller for biochemical variables (n~150) compared to BMI and SBP (n~2000). Using the score developed in European-ancestry individuals, score performance was then tested in a combined-ancestry group including Black and Hispanic individuals, which almost doubled the sample size (Supplementary Table 3). While some traits showed strong relationships (e.g. SBP), the signs of many were in a counter-intuitive direction, including a flip in sign for the previously-strong LDL-C relationship, suggesting that these results may reflect the known difficulties in conducting trans-ancestry polygenic prediction (due to differences in linkage disequilibrium among other factors) rather than the intended biological differences. This observation was reinforced by the lack of association of the score with CRF changes in either Blacks or Hispanics alone. Using the LDpred algorithm, which considers the full genome-wide set of SNPs, no predictive FRS effects were detected (Supplementary Table 4), possibly reflecting a lack of power to overcome the multiple testing burden without a nominal main-effect filter.
+As the scores were developed to predict a positive interaction with dietary fat intake, the expected direction of the FRS effect on risk factors in the present fat-reduction trial would be negative. Of the fat response scores examined, only the LDL-C fat response score (LDL-FRS) was predictive at p < 0.05 of the associated CRF change in DM trial participants in the fat-reduction arm (passing a Bonferroni correction for the 6 CRFs tested in baseline-adjusted sensitivity models; results for all scores shown in Table 2). For this score, the standardized effect size was `r round(fat_score_res$effect_std[fat_score_res$rf == "ldl"], 2)` (corresponding to a `r round(-fat_score_res$effect_per_sd[fat_score_res$rf == "ldl"], 2)` mg/dL greater decrease in LDL-C per score standard deviation; p=`r round(fat_score_res$p.value[fat_score_res$rf == "ldl"], 3)`). We note that the sample size of European-ancestry DM trial participants with follow-up measurements was much smaller for biochemical variables (n~150) compared to BMI and SBP (n~2000). Using the score developed in European-ancestry individuals, score performance was then tested in a combined-ancestry group including Black and Hispanic individuals, which almost doubled the sample size (Supplementary Table 3). While some traits showed strong relationships (e.g. SBP), the signs of many were in a counter-intuitive direction, including a flip in sign for the previously-strong LDL-C relationship, suggesting that these results may reflect the known difficulties in conducting trans-ancestry polygenic prediction (due to differences in linkage disequilibrium among other factors) rather than the intended biological differences. This observation was reinforced by the lack of association of the score with CRF changes in either Blacks or Hispanics alone. Using the LDpred algorithm, which considers the full genome-wide set of SNPs, no predictive FRS effects were detected (Supplementary Table 4), possibly reflecting a lack of power to overcome the multiple testing burden without a nominal main-effect filter.
 
 ```{r test-ldl-scores-other-rfs, message=F}
 ldl_score_res <- tibble(test_rf=rfs) %>%
@@ -711,15 +715,15 @@ ldl_score_df_subsets <- list(dm_int=filter(ldl_score_df_with_outcomes, dm_interv
 subset_sample_sizes <- lapply(ldl_score_df_subsets, nrow)
 
 library(survival)
-outcome_names <- c(chd="Coronary Heart Disease", 
-                   mi="Myocardial Infarction",
-                   isch_stroke="Ischemic Stroke", 
-                   hemo_stroke="Hemorrhagic Stroke",
-                   dm="Diabetes", 
-                   cancer="All Cancers",
-                   death="Death",
-                   cvd_death="CVD Death", 
-                   non_cvd_death="Non-CVD Death")
+outcome_names <- c(chd="coronary heart disease", 
+                   mi="myocardial infarction",
+                   isch_stroke="ischemic stroke", 
+                   hemo_stroke="hemorrhagic stroke",
+                   dm="diabetes", 
+                   cancer="all cancers",
+                   death="death",
+                   cvd_death="CVD death", 
+                   non_cvd_death="non-CVD death")
 disease_fits <- lapply(names(outcome_names),
                        function(disease) {
   fits <- lapply(ldl_score_df_subsets, function(df) {
@@ -753,13 +757,13 @@ disease_plots <- lapply(names(outcome_names), function(disease) {
     theme(axis.text.y=element_blank(),
           legend.title=element_blank(), 
           legend.text=element_text(color="black"),
-          axis.title.x=element_text(family="", face="plain", color="black"))
+          axis.title.x=element_text(family="", face="plain", color="black", size=8))
 })
 names(disease_plots) <- names(outcome_names)
 disease_plots$hemo_stroke <- disease_plots$hemo_stroke + coord_cartesian(xlim=c(-30, 30))
 
 legend <- get_legend(disease_plots[[1]] +
-                       theme(legend.text=element_text(size=10),
+                       theme(legend.text=element_text(size=8),
                              legend.key.size=unit(2, "line")))
 disease_plots <- lapply(disease_plots, 
                         function(p) p + 
